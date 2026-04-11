@@ -568,8 +568,15 @@ def api_status():
 def index():
     return render_template("index.html")
 
+# ─── ЗАПУСК ФОНОВЫХ ПОТОКОВ ───────────────────────────────────────────────────
+# КРИТИЧНО: запускаем на уровне модуля — иначе gunicorn их не выполнит!
+# (gunicorn импортирует app как модуль и не выполняет if __name__ == "__main__")
+_initial_thread = threading.Thread(target=fetch_data, daemon=True)
+_initial_thread.start()
+_poll_thread = threading.Thread(target=background_poll, daemon=True)
+_poll_thread.start()
+logger.info("🚀 Фоновые потоки запущены (gunicorn-совместимо)")
+
 if __name__ == "__main__":
-    threading.Thread(target=fetch_data, daemon=True).start()
-    threading.Thread(target=background_poll, daemon=True).start()
     port = int(os.environ.get("PORT", 5050))
     app.run(debug=False, port=port, host="0.0.0.0")
