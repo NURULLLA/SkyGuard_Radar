@@ -220,8 +220,8 @@ def fetch_data():
             all_plan = schedule_service.get_flight_plan(search_regs=AIRCRAFT_REGISTRATIONS)
             if not all_plan:
                 last_schedule_update = now_ts - 540
-                logger.warning("🕒 АвиаБит вернул пустоту")
-                return
+                logger.warning("🕒 АвиаБит вернул пустоту — продолжаем с FR24")
+                # НЕ делаем return — FR24 должен работать независимо!
             now_iso = datetime.now(timezone.utc).isoformat()
             with data_lock:
                 for reg in AIRCRAFT_REGISTRATIONS:
