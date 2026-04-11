@@ -19,6 +19,7 @@ class SkyguardScheduleService:
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
+            "X-Requested-With": "XMLHttpRequest",
             "Origin": self.base_url,
             "Referer": f"{self.base_url}/login"
         })
@@ -49,7 +50,7 @@ class SkyguardScheduleService:
                 logger.error(f"❌ АвиаБит: Ошибка входа {response.status_code}: {response.text}")
                 return False
         except Exception as e:
-            self.last_error = str(e)
+            self.last_error = f"Login Exception: {str(e)}"
             logger.error(f"❌ АвиаБит: Исключение при входе: {e}")
             return False
 
@@ -94,9 +95,11 @@ class SkyguardScheduleService:
                     return filtered
                 return data
             else:
+                self.last_error = f"Plan error {response.status_code}: {response.text[:200]}"
                 logger.error(f"❌ Ошибка получения плана: {response.status_code}")
                 return []
         except Exception as e:
+            self.last_error = f"Plan Exception: {str(e)}"
             logger.error(f"❌ Исключение при получении плана: {e}")
             return []
 

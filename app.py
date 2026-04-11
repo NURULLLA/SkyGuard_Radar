@@ -24,6 +24,14 @@ console_handler.setFormatter(formatter)
 logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 logger = logging.getLogger(__name__)
 
+# ─── GLOBAL STATE ─────────────────────────────────────────────────────────────
+last_schedule_update = 0
+last_background_error = None
+data_lock            = threading.Lock()
+flight_cache        = {}
+schedule_cache      = {}
+notified_delays    = set()
+
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 try:
     with open('config.json', 'r', encoding='utf-8') as f:
