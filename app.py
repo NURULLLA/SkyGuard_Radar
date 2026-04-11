@@ -31,6 +31,8 @@ data_lock            = threading.Lock()
 flight_cache        = {}
 schedule_cache      = {}
 notified_delays    = set()
+_threads_started   = False
+fr_api             = FlightRadar24API()
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 try:
@@ -536,38 +538,33 @@ def api_alerts():
 @app.route("/api/status")
 def api_status():
     """Диагностический endpoint — проверяет подключения."""
-    aviabit_ok = False
-    aviabit_msg = ""
+    aviabit_info = {
+        "url": AVIABIT_CREDENTIALS.get("base_url", "https://ab-web.aviastartu.ru"),
+        "username": AVIABIT_CREDENTIALS.get("username"),
+        "reachable": False,
+        "message": "",
+        "body": ""
+    }
     try:
-        r = requests.get(
-            f"{AVIABIT_CREDENTIALS.get('base_url','https://ab-web.aviastartu.ru')}/api/auth",
-            timeout=5, verify=False)
-        aviabit_msg = f"HTTP {r.status_code}"
-        aviabit_ok = r.status_code in (200, 401, 403)
+        r = requests.get(aviabit_info["url"] + "/api/auth", timeout=5, verify=False)
+        aviabit_info["message"] = f"HTTP {r.status_code}"
+        aviabit_info["reachable"] = r.status_code in (200, 400, 401, 403, 405)
+        if r.status_code != 200:
+            aviabit_info["body"] = r.text[:300]
     except Exception as e:
-        aviabit_msg = str(e)
+        aviabit_info["message"] = str(e)
 
-    fr24_ok = False
-    fr24_msg = ""
+    fr24_status = {"reachable": False, "message": ""}
     try:
         test = fr_api.get_flights(registration="UK75057")
-        fr24_ok = True
-        fr24_msg = f"OK, нашёл {len(test)} рейс(ов)"
+        fr24_status["reachable"] = True
+        fr24_status["message"] = f"OK, нашёл {len(test)} рейс(ов)"
     except Exception as e:
-        fr24_msg = str(e)
+        fr24_status["message"] = str(e)
 
     return jsonify({
-        "aviabit": {
-            "url": AVIABIT_CREDENTIALS.get("base_url"),
-            "username": AVIABIT_CREDENTIALS.get("username") or "❌ НЕ ЗАДАН",
-            "reachable": aviabit_ok,
-            "message": aviabit_msg,
-            "logged_in": schedule_service.logged_in
-        },
-        "fr24": {
-            "reachable": fr24_ok,
-            "message": fr24_msg
-        },
+        "aviabit": aviabit_info,
+        "fr24": fr24_status,
         "schedule_last_update": last_schedule_update,
         "now": time.time(),
         "background_error": last_background_error,
@@ -583,14 +580,16 @@ def api_status():
 def index():
     return render_template("index.html")
 
-# ─── ЗАПУСК ФОНОВЫХ ПОТОКОВ ───────────────────────────────────────────────────
-# КРИТИЧНО: запускаем на уровне модуля — иначе gunicorn их не выполнит!
-# (gunicorn импортирует app как модуль и не выполняет if __name__ == "__main__")
-_initial_thread = threading.Thread(target=fetch_data, daemon=True)
-_initial_thread.start()
-_poll_thread = threading.Thread(target=background_poll, daemon=True)
-_poll_thread.start()
-logger.info("🚀 Фоновые потоки запущены (gunicorn-совместимо)")
+@app.before_request
+def bootstrap_threads():
+    global _threads_started
+    if not _threads_started:
+        with data_lock:
+            if not _threads_started:
+                threading.Thread(target=fetch_data, name="FetchDataThread", daemon=True).start()
+                threading.Thread(target=background_poll, name="BgPollThread", daemon=True).start()
+                _threads_started = True
+                logger.info("🚀 Фоновые потоки запущены из before_request")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
