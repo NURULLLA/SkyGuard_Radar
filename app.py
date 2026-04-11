@@ -239,6 +239,7 @@ def fetch_data():
                 last_schedule_update = now_ts
                 logger.info("✨ Расписание обновлено")
         except Exception as e:
+            last_background_error = f"Schedule error: {e}"
             logger.error(f"Schedule error: {e}")
             last_schedule_update = now_ts - 540
 
@@ -560,6 +561,12 @@ def api_status():
             "message": fr24_msg
         },
         "schedule_last_update": last_schedule_update,
+        "now": time.time(),
+        "background_error": last_background_error,
+        "threads": {
+            "active_count": threading.active_count(),
+            "names": [t.name for t in threading.enumerate()]
+        },
         "aircraft": AIRCRAFT_REGISTRATIONS,
         "config_source": "config.json" if (config is not None) else "environment_variables"
     })

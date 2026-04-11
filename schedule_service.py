@@ -2,7 +2,7 @@ import requests
 import json
 import urllib3
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Отключаем предупреждения о небезопасном SSL (для локальной работы)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -23,6 +23,7 @@ class SkyguardScheduleService:
             "Referer": f"{self.base_url}/login"
         })
         self.logged_in = False
+        self.last_error = None
 
     def login(self):
         """Выполняет вход в АвиаБит."""
@@ -48,6 +49,7 @@ class SkyguardScheduleService:
                 logger.error(f"❌ АвиаБит: Ошибка входа {response.status_code}: {response.text}")
                 return False
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"❌ АвиаБит: Исключение при входе: {e}")
             return False
 
