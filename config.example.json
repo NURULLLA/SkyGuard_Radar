@@ -1,0 +1,31 @@
+{
+  "aviabit": {
+    "username": "YOUR_USERNAME",
+    "password": "YOUR_PASSWORD",
+    "base_url": "https://ab-web.aviastartu.ru"
+  },
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "aircraft": {
+    "UK75057": {
+      "name": "UK-75057",
+      "color": "#00d4ff",
+      "icao": "UK75057"
+    },
+    "UK75058": {
+      "name": "UK-75058",
+      "color": "#ff6b35",
+      "icao": "UK75058"
+    }
+  },
+  "airports": {
+    "SHJ": {"name": "Sharjah", "lat": 25.3283, "lon": 55.5172},
+    "DXB": {"name": "Dubai", "lat": 25.2532, "lon": 55.3657},
+    "URC": {"name": "Urumqi", "lat": 43.9071, "lon": 87.4742},
+    "SKD": {"name": "Samarkand", "lat": 39.7005, "lon": 66.9839}
+  },
+  "poll_interval": 30,
+  "max_track_points": 100
+}

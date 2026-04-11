@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+vcl/
+venv/
+.env
+
+# Config (Do not upload passwords!)
+config.json
+
+# IDE
+.vscode/
+.idea/
+
+# Flask
+instance/
+.webassets-cache
