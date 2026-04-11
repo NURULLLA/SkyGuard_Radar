@@ -546,7 +546,8 @@ def api_status():
         "body": ""
     }
     try:
-        r = requests.get(aviabit_info["url"] + "/api/auth", timeout=5, verify=False)
+        headers = {"Origin": aviabit_info["url"]}
+        r = requests.get(aviabit_info["url"] + "/api/auth", timeout=5, verify=False, headers=headers)
         aviabit_info["message"] = f"HTTP {r.status_code}"
         aviabit_info["reachable"] = r.status_code in (200, 400, 401, 403, 405)
         if r.status_code != 200:
