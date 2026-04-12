@@ -16,3 +16,10 @@ config.json
 # Flask
 instance/
 .webassets-cache
+
+# Skyguard Data
+*.db
+logs/
+scratch/
+test_aviabit.py
+debug_fr24.py
