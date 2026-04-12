@@ -81,7 +81,9 @@ else:
         "BEY": {"name": "Beirut",            "country": "Lebanon",     "lat": 33.8209, "lon": 35.4884},
         "AMM": {"name": "Amman",             "country": "Jordan",      "lat": 31.7225, "lon": 35.9932},
         "FRU": {"name": "Бишкек (Манас)",   "country": "Кыргызстан",  "lat": 42.8474, "lon": 74.4776},
-        "BSZ": {"name": "Бишкек (Манас)",   "country": "Кыргызстан",  "lat": 42.8474, "lon": 74.4776}
+        "BSZ": {"name": "Бишкек (Манас)",   "country": "Кыргызстан",  "lat": 42.8474, "lon": 74.4776},
+        "ATH": {"name": "Athens",            "country": "Greece",      "lat": 37.9364, "lon": 23.9445},
+        "LCA": {"name": "Larnaca",           "country": "Cyprus",      "lat": 34.8751, "lon": 33.6249}
     }
     POLL_INTERVAL    = 30
     MAX_TRACK_POINTS = 100
