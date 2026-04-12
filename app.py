@@ -114,6 +114,10 @@ def init_db():
                         reg TEXT PRIMARY KEY,
                         lat REAL NOT NULL, lon REAL NOT NULL,
                         ts  REAL NOT NULL, callsign TEXT)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS airports (
+                        iata TEXT PRIMARY KEY,
+                        name TEXT, country TEXT,
+                        lat REAL, lon REAL)''')
         conn.commit()
     logger.info("🗄 БД инициализирована")
 
@@ -165,10 +169,60 @@ def send_telegram(message):
     except Exception as e: logger.error(f"Telegram: {e}")
 
 def get_airport_info(iata):
-    info = AIRPORTS.get(iata)
-    if info:
-        return f"{info['name']}, {info['country']} ({iata})"
+    if not iata or iata == "—": return iata
+    
+    # 1. Пробуем найти в БД
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cur = conn.execute("SELECT name, country, lat, lon FROM airports WHERE iata = ?", (iata,))
+            row = cur.fetchone()
+            if row:
+                return {"name": row[0], "country": row[1], "lat": row[2], "lon": row[3]}
+    except Exception as e:
+        logger.error(f"DB get_airport: {e}")
+
+    # 2. Если нет в БД — пробуем взять из дефолтного словаря (для скорости)
+    if iata in AIRPORTS:
+        info = AIRPORTS[iata]
+        # Сохраняем в БД на будущее
+        save_airport_to_db(iata, info["name"], info["country"], info["lat"], info["lon"])
+        return info
+
+    # 3. Если совсем нигде нет — скачиваем внешнюю базу (ленивая загрузка)
+    logger.info(f"🔎 Поиск данных для аэропорта {iata} во внешней базе...")
+    try:
+        # URL базы OpenFlights
+        url = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            import csv
+            from io import StringIO
+            # airports.dat — это CSV без заголовков
+            reader = csv.reader(StringIO(r.text))
+            for row in reader:
+                # IATA код в 5-й колонке (индекс 4)
+                if len(row) > 7 and row[4] == iata:
+                    name = row[1]
+                    country = row[3]
+                    lat = float(row[6])
+                    lon = float(row[7])
+                    save_airport_to_db(iata, name, country, lat, lon)
+                    logger.info(f"✅ Найдено: {iata} -> {name}, {country}")
+                    return {"name": name, "country": country, "lat": lat, "lon": lon}
+    except Exception as e:
+        logger.error(f"External airport search failed: {e}")
+
     return iata
+
+def save_airport_to_db(iata, name, country, lat, lon):
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO airports (iata, name, country, lat, lon) VALUES (?,?,?,?,?)",
+                (iata, name, country, lat, lon))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"DB save_airport: {e}")
 
 def calculate_bearing(lat1, lon1, lat2, lon2):
     """Азимут из точки 1 в точку 2 (градусы)."""
@@ -180,9 +234,10 @@ def calculate_bearing(lat1, lon1, lat2, lon2):
 
 def calculate_route_position(origin_iata, dest_iata, takeoff_iso, landing_iso):
     """Расчётная позиция самолёта по линейному прогрессу рейса (для карты)."""
-    if origin_iata not in AIRPORTS or dest_iata not in AIRPORTS:
+    o = get_airport_info(origin_iata)
+    d = get_airport_info(dest_iata)
+    if not isinstance(o, dict) or not isinstance(d, dict):
         return None
-    o, d = AIRPORTS[origin_iata], AIRPORTS[dest_iata]
     try:
         t0 = datetime.fromisoformat(takeoff_iso.replace("Z", "+00:00"))
         t1 = datetime.fromisoformat(landing_iso.replace("Z", "+00:00"))
@@ -284,16 +339,15 @@ def fetch_data():
             logger.warning(f"FR24 {reg}: {e}")
 
         # Аэропорты из расписания
-        origin_iata = (sched.get("airPortTOCode") if sched else None) or "—"
-        dest_iata   = (sched.get("airPortLACode")  if sched else None) or "—"
-        origin_full = get_airport_info(origin_iata)
-        dest_full   = get_airport_info(dest_iata)
-
+        o_data = get_airport_info(origin_iata)
+        d_data = get_airport_info(dest_iata)
+        
+        origin_full = f"{o_data['name']}, {o_data['country']} ({origin_iata})" if isinstance(o_data, dict) else origin_iata
+        dest_full   = f"{d_data['name']}, {d_data['country']} ({dest_iata})" if isinstance(d_data, dict) else dest_iata
+        
         # Координаты аэропортов для карты
-        origin_coords = ({"lat": AIRPORTS[origin_iata]["lat"], "lon": AIRPORTS[origin_iata]["lon"]}
-                         if origin_iata in AIRPORTS else None)
-        dest_coords   = ({"lat": AIRPORTS[dest_iata]["lat"],   "lon": AIRPORTS[dest_iata]["lon"]}
-                         if dest_iata in AIRPORTS else None)
+        origin_coords = {"lat": o_data["lat"], "lon": o_data["lon"]} if isinstance(o_data, dict) else None
+        dest_coords   = {"lat": d_data["lat"], "lon": d_data["lon"]} if isinstance(d_data, dict) else None
 
         # Маршрутный азимут
         route_heading = 0
@@ -496,13 +550,17 @@ def api_flights():
             sched_mapped = {"current": None, "upcoming": []}
             if sched.get("current"):
                 c = dict(sched["current"])
-                c["origin_full"] = get_airport_info(c.get("airPortTOCode"))
-                c["dest_full"]   = get_airport_info(c.get("airPortLACode"))
+                o_f = get_airport_info(c.get("airPortTOCode"))
+                d_f = get_airport_info(c.get("airPortLACode"))
+                c["origin_full"] = f"{o_f['name']}, {o_f['country']} ({c.get('airPortTOCode')})" if isinstance(o_f, dict) else c.get('airPortTOCode')
+                c["dest_full"]   = f"{d_f['name']}, {d_f['country']} ({c.get('airPortLACode')})" if isinstance(d_f, dict) else c.get('airPortLACode')
                 sched_mapped["current"] = c
             for u in sched.get("upcoming", []):
                 item = dict(u)
-                item["origin_full"] = get_airport_info(item.get("airPortTOCode"))
-                item["dest_full"]   = get_airport_info(item.get("airPortLACode"))
+                o_f = get_airport_info(item.get("airPortTOCode"))
+                d_f = get_airport_info(item.get("airPortLACode"))
+                item["origin_full"] = f"{o_f['name']}, {o_f['country']} ({item.get('airPortTOCode')})" if isinstance(o_f, dict) else item.get('airPortTOCode')
+                item["dest_full"]   = f"{d_f['name']}, {d_f['country']} ({item.get('airPortLACode')})" if isinstance(d_f, dict) else item.get('airPortLACode')
                 sched_mapped["upcoming"].append(item)
 
             if data:
