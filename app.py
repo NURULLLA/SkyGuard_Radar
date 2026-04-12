@@ -283,30 +283,35 @@ def fetch_data():
     # 1. Расписание — раз в 10 минут
     if now_ts - last_schedule_update > 600:
         try:
+            logger.info("🔄 Синхронизация с АвиаБит...")
             all_plan = schedule_service.get_flight_plan(search_regs=AIRCRAFT_REGISTRATIONS)
-            if not all_plan:
-                last_schedule_update = now_ts - 540
-                logger.warning("🕒 АвиаБит вернул пустоту — продолжаем с FR24")
-            now_iso = datetime.now(timezone.utc).isoformat()
-            with data_lock:
-                for reg in AIRCRAFT_REGISTRATIONS:
-                    reg_n = reg.replace("-", "").upper()
-                    plane = sorted(
-                        [f for f in all_plan if str(f.get("pln","")).replace("-","").upper() == reg_n],
-                        key=lambda x: x.get("dateTakeoff", ""))
-                    cur, upc = None, []
-                    for f in plane:
-                        if f.get("dateTakeoff","") <= now_iso <= f.get("dateLanding","") or f.get("status") == 1:
-                            cur = f
-                        elif f.get("dateTakeoff","") > now_iso:
-                            upc.append(f)
-                    schedule_cache[reg] = {"current": cur, "upcoming": upc[:5]}
+            
+            if all_plan:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                with data_lock:
+                    for reg in AIRCRAFT_REGISTRATIONS:
+                        reg_n = reg.replace("-", "").upper().strip()
+                        plane = sorted(
+                            [f for f in all_plan if str(f.get("pln","")).replace("-","").upper().strip() == reg_n],
+                            key=lambda x: x.get("dateTakeoff", ""))
+                        cur, upc = None, []
+                        for f in plane:
+                            if f.get("dateTakeoff","") <= now_iso <= f.get("dateLanding","") or f.get("status") == 1:
+                                cur = f
+                            elif f.get("dateTakeoff","") > now_iso:
+                                upc.append(f)
+                        schedule_cache[reg] = {"current": cur, "upcoming": upc[:5]}
                 last_schedule_update = now_ts
-                logger.info("✨ Расписание обновлено")
+                logger.info(f"✨ Расписание успешно обновлено ({len(all_plan)} рейсов)")
+            else:
+                # План пустой — пробуем чаще (через минуту), но не затираем старые данные
+                last_schedule_update = now_ts - 540
+                logger.warning("🕒 АвиаБит вернул пустоту — оставляем старые данные в кэше и пробуем позже")
+
         except Exception as e:
             last_background_error = f"Schedule error: {e}"
-            logger.error(f"Schedule error: {e}")
-            last_schedule_update = now_ts - 540
+            logger.error(f"❌ Ошибка синхронизации расписания: {e}")
+            last_schedule_update = now_ts - 540 # Пробуем через 60 секунд
 
     # 2. Для каждого борта — FR24 + позиция
     found = {}
