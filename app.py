@@ -9,9 +9,17 @@ from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 from FlightRadar24 import FlightRadar24API
 from schedule_service import SkyguardScheduleService
+import os
 import sqlite3
 import logging.handlers
-import os
+try:
+    import fcntl # Linux/Render
+except ImportError:
+    fcntl = None
+try:
+    import msvcrt # Windows
+except ImportError:
+    msvcrt = None
 
 # ─── LOGGING ─────────────────────────────────────────────────────────────────
 if not os.path.exists('logs'): os.makedirs('logs')
@@ -32,6 +40,7 @@ flight_cache        = {}
 schedule_cache      = {}
 notified_delays    = set()
 _threads_started   = False
+_lock_acquired     = False
 fr_api             = FlightRadar24API()
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
@@ -280,6 +289,13 @@ def fetch_data():
     global flight_cache, schedule_cache, last_schedule_update, notified_delays, last_background_error
     now_ts = time.time()
 
+    # 0. Самоочистка кэша раз в сутки (в 03:00 UTC или около того)
+    now_dt = datetime.now(timezone.utc)
+    if now_dt.hour == 3 and now_dt.minute < 10:
+        with data_lock:
+            notified_delays.clear()
+            logger.info("🧹 Ежедневная очистка кэша уведомлений")
+
     # 1. Расписание — раз в 10 минут
     if now_ts - last_schedule_update > 600:
         try:
@@ -343,6 +359,7 @@ def fetch_data():
                 if flights:
                     fl = flights[0]
                     fr24_alt      = fl.altitude or 0
+                    fr24_vspeed   = getattr(fl, 'vertical_speed', 0) or 0
                     fr24_callsign = fl.callsign
                     fr24_found    = True
                     # Сохраняем позицию в БД и запоминаем реальные координаты
@@ -354,7 +371,7 @@ def fetch_data():
                             track_history[reg].append(
                                 {"lat": fl.latitude, "lng": fl.longitude, "ts": time.time()})
                             track_history[reg] = track_history[reg][-MAX_TRACK_POINTS:]
-                    logger.info(f"✈️ FR24 нашёл {reg}: высота={fr24_alt}ft, callsign={fr24_callsign}, GPS=({fr24_lat},{fr24_lon})")
+                    logger.info(f"✈️ FR24 нашёл {reg}: высота={fr24_alt}ft, v_speed={fr24_vspeed}, callsign={fr24_callsign}")
             except Exception as e:
                 logger.warning(f"FR24 {reg}: {e}")
 
@@ -395,7 +412,8 @@ def fetch_data():
 
             if fr24_found:
                 # FR24 подтвердил борт
-                status        = "airborne" if fr24_alt > 100 else "ground"
+                # Считаем airborne если высота > 200 или есть уверенный вертикальный набор > 200
+                status        = "airborne" if (fr24_alt > 200 or abs(fr24_vspeed) > 200) else "ground"
                 position_type = "live"
                 # Позиция: приоритет — реальный GPS FR24, затем расчётная по маршруту
                 if fr24_lat is not None:
@@ -657,13 +675,41 @@ def api_status():
 
 @app.route("/")
 def index():
+    # Попытка запуска потоков при первом обращении (надёжно для всех серверов)
+    threading.Thread(target=safe_start_threads, daemon=True).start()
     return render_template("index.html")
 
+def safe_start_threads():
+    """Запускает мониторинг один раз, даже если воркеров много."""
+    global _threads_started, _lock_acquired
+    if _threads_started: return
+
+    # Кросс-процессная блокировка через файл
+    lock_path = 'skyguard.lock'
+    try:
+        f = open(lock_path, 'w')
+        if fcntl: # Linux
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        elif msvcrt: # Windows
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        
+        # Если блокировка получена — этот воркер будет "главным"
+        _lock_acquired = True
+        with data_lock:
+            if _threads_started: return
+            threading.Thread(target=background_poll, name="BgPollThread", daemon=True).start()
+            _threads_started = True
+        
+        logger.info("🚀 Крот-мониторинг запущен (Воркер-Мастер)")
+        send_telegram("🚀 Skyguard Online: Мониторинг запущен успешно.")
+    except Exception:
+        # Блокировка уже занята другим воркером
+        pass
+
 if __name__ == "__main__":
-    threading.Thread(target=fetch_data, name="FetchDataThread", daemon=True).start()
-    threading.Thread(target=background_poll, name="BgPollThread", daemon=True).start()
-    _threads_started = True
-    logger.info("🚀 Фоновые потоки мониторинга запущены")
+    # Локальный запуск (Flask Dev Server)
+    if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        threading.Thread(target=safe_start_threads, daemon=True).start()
 
     port = int(os.environ.get("PORT", 5050))
     app.run(debug=False, port=port, host="0.0.0.0")
