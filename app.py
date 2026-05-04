@@ -32,7 +32,11 @@ except Exception as e:
     logger.error(f"❌ Ошибка загрузки config.json: {e}"); exit(1)
 
 AVIABIT_CREDENTIALS  = config["aviabit"]
-TELEGRAM_CONFIG      = config.get("telegram", {})
+# Приоритет переменным окружения (для Render), иначе из config.json
+TELEGRAM_CONFIG = {
+    "bot_token": os.environ.get("TELEGRAM_BOT_TOKEN") or config.get("telegram", {}).get("bot_token"),
+    "chat_id":   os.environ.get("TELEGRAM_CHAT_ID")   or config.get("telegram", {}).get("chat_id")
+}
 AIRCRAFT_CONFIG      = config["aircraft"]
 AIRCRAFT_REGISTRATIONS = list(AIRCRAFT_CONFIG.keys())
 AIRPORTS             = config["airports"]
