@@ -9,17 +9,9 @@ from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 from FlightRadar24 import FlightRadar24API
 from schedule_service import SkyguardScheduleService
-import os
 import sqlite3
 import logging.handlers
-try:
-    import fcntl # Linux/Render
-except ImportError:
-    fcntl = None
-try:
-    import msvcrt # Windows
-except ImportError:
-    msvcrt = None
+import os
 
 # ─── LOGGING ─────────────────────────────────────────────────────────────────
 if not os.path.exists('logs'): os.makedirs('logs')
@@ -32,80 +24,24 @@ console_handler.setFormatter(formatter)
 logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 logger = logging.getLogger(__name__)
 
-# ─── GLOBAL STATE ─────────────────────────────────────────────────────────────
-last_schedule_update = 0
-last_background_error = None
-data_lock            = threading.Lock()
-flight_cache        = {}
-schedule_cache      = {}
-notified_delays    = set()
-_threads_started   = False
-_lock_acquired     = False
-fr_api             = FlightRadar24API()
-
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 try:
     with open('config.json', 'r', encoding='utf-8') as f:
         config = json.load(f)
-    logger.info("✅ config.json загружен")
 except Exception as e:
-    logger.warning(f"⚠️ config.json не найден ({e}), читаем из ENV переменных")
-    config = None
+    logger.error(f"❌ Ошибка загрузки config.json: {e}"); exit(1)
 
-# Поддержка Environment Variables (для Render.com и других облаков)
-if config:
-    AVIABIT_CREDENTIALS = config["aviabit"]
-    TELEGRAM_CONFIG     = config.get("telegram", {})
-    AIRCRAFT_CONFIG     = config["aircraft"]
-    AIRPORTS            = config["airports"]
-    POLL_INTERVAL       = config.get("poll_interval", 30)
-    MAX_TRACK_POINTS    = config.get("max_track_points", 100)
-else:
-    # Читаем из переменных окружения (Render Dashboard → Environment)
-    AVIABIT_CREDENTIALS = {
-        "username": os.environ.get("AVIABIT_USERNAME", ""),
-        "password": os.environ.get("AVIABIT_PASSWORD", ""),
-        "base_url": os.environ.get("AVIABIT_URL", "https://ab-web.aviastartu.ru")
-    }
-    TELEGRAM_CONFIG = {
-        "bot_token": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
-        "chat_id":   os.environ.get("TELEGRAM_CHAT_ID", "")
-    }
-    AIRCRAFT_CONFIG = {
-        "UK75057": {"name": "UK-75057", "color": "#00d4ff", "icao": "UK75057"},
-        "UK75058": {"name": "UK-75058", "color": "#ff6b35", "icao": "UK75058"}
-    }
-    AIRPORTS = {
-        "SHJ": {"name": "Sharjah",           "country": "UAE",         "lat": 25.3283, "lon": 55.5172},
-        "DXB": {"name": "Dubai",             "country": "UAE",         "lat": 25.2532, "lon": 55.3657},
-        "ASM": {"name": "Asmara",            "country": "Eritrea",     "lat": 15.3311, "lon": 38.9103},
-        "BOM": {"name": "Mumbai",            "country": "India",       "lat": 19.0896, "lon": 72.8656},
-        "URC": {"name": "Urumqi",            "country": "China",       "lat": 43.9071, "lon": 87.4742},
-        "SKD": {"name": "Samarkand",         "country": "Uzbekistan",  "lat": 39.7005, "lon": 66.9839},
-        "TAS": {"name": "Tashkent",          "country": "Uzbekistan",  "lat": 41.2575, "lon": 69.2812},
-        "KBL": {"name": "Kabul",             "country": "Afghanistan", "lat": 34.5658, "lon": 69.2123},
-        "NBO": {"name": "Nairobi",           "country": "Kenya",       "lat": -1.3192, "lon": 36.9275},
-        "IST": {"name": "Istanbul",          "country": "Turkey",      "lat": 41.2753, "lon": 28.7519},
-        "DWC": {"name": "Dubai Al Maktoum",  "country": "UAE",         "lat": 24.8962, "lon": 55.1612},
-        "BEY": {"name": "Beirut",            "country": "Lebanon",     "lat": 33.8209, "lon": 35.4884},
-        "AMM": {"name": "Amman",             "country": "Jordan",      "lat": 31.7225, "lon": 35.9932},
-        "FRU": {"name": "Бишкек (Манас)",   "country": "Кыргызстан",  "lat": 42.8474, "lon": 74.4776},
-        "BSZ": {"name": "Бишкек (Манас)",   "country": "Кыргызстан",  "lat": 42.8474, "lon": 74.4776},
-        "ATH": {"name": "Athens",            "country": "Greece",      "lat": 37.9364, "lon": 23.9445},
-        "LCA": {"name": "Larnaca",           "country": "Cyprus",      "lat": 34.8751, "lon": 33.6249}
-    }
-    POLL_INTERVAL    = 30
-    MAX_TRACK_POINTS = 100
-
-if not AVIABIT_CREDENTIALS.get("username"):
-    logger.error("❌ AVIABIT_USERNAME не задан! Установите env переменную на Render.")
-
+AVIABIT_CREDENTIALS  = config["aviabit"]
+TELEGRAM_CONFIG      = config.get("telegram", {})
+AIRCRAFT_CONFIG      = config["aircraft"]
 AIRCRAFT_REGISTRATIONS = list(AIRCRAFT_CONFIG.keys())
-logger.info(f"🛩 Борты: {AIRCRAFT_REGISTRATIONS}")
-logger.info(f"🔑 Aviabit user: {AVIABIT_CREDENTIALS.get('username', '???')}")
+AIRPORTS             = config["airports"]
+POLL_INTERVAL        = config.get("poll_interval", 30)
+MAX_TRACK_POINTS     = config.get("max_track_points", 100)
 
 app = Flask(__name__)
 CORS(app)
+fr_api = FlightRadar24API()
 schedule_service = SkyguardScheduleService(
     username=AVIABIT_CREDENTIALS["username"],
     password=AVIABIT_CREDENTIALS["password"])
@@ -122,10 +58,6 @@ def init_db():
                         reg TEXT PRIMARY KEY,
                         lat REAL NOT NULL, lon REAL NOT NULL,
                         ts  REAL NOT NULL, callsign TEXT)''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS airports (
-                        iata TEXT PRIMARY KEY,
-                        name TEXT, country TEXT,
-                        lat REAL, lon REAL)''')
         conn.commit()
     logger.info("🗄 БД инициализирована")
 
@@ -177,60 +109,10 @@ def send_telegram(message):
     except Exception as e: logger.error(f"Telegram: {e}")
 
 def get_airport_info(iata):
-    if not iata or iata == "—": return iata
-    
-    # 1. Пробуем найти в БД
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            cur = conn.execute("SELECT name, country, lat, lon FROM airports WHERE iata = ?", (iata,))
-            row = cur.fetchone()
-            if row:
-                return {"name": row[0], "country": row[1], "lat": row[2], "lon": row[3]}
-    except Exception as e:
-        logger.error(f"DB get_airport: {e}")
-
-    # 2. Если нет в БД — пробуем взять из дефолтного словаря (для скорости)
-    if iata in AIRPORTS:
-        info = AIRPORTS[iata]
-        # Сохраняем в БД на будущее
-        save_airport_to_db(iata, info["name"], info["country"], info["lat"], info["lon"])
-        return info
-
-    # 3. Если совсем нигде нет — скачиваем внешнюю базу (ленивая загрузка)
-    logger.info(f"🔎 Поиск данных для аэропорта {iata} во внешней базе...")
-    try:
-        # URL базы OpenFlights
-        url = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            import csv
-            from io import StringIO
-            # airports.dat — это CSV без заголовков
-            reader = csv.reader(StringIO(r.text))
-            for row in reader:
-                # IATA код в 5-й колонке (индекс 4)
-                if len(row) > 7 and row[4] == iata:
-                    name = row[1]
-                    country = row[3]
-                    lat = float(row[6])
-                    lon = float(row[7])
-                    save_airport_to_db(iata, name, country, lat, lon)
-                    logger.info(f"✅ Найдено: {iata} -> {name}, {country}")
-                    return {"name": name, "country": country, "lat": lat, "lon": lon}
-    except Exception as e:
-        logger.error(f"External airport search failed: {e}")
-
+    info = AIRPORTS.get(iata)
+    if info:
+        return f"{info['name']}, {info['country']} ({iata})"
     return iata
-
-def save_airport_to_db(iata, name, country, lat, lon):
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO airports (iata, name, country, lat, lon) VALUES (?,?,?,?,?)",
-                (iata, name, country, lat, lon))
-            conn.commit()
-    except Exception as e:
-        logger.error(f"DB save_airport: {e}")
 
 def calculate_bearing(lat1, lon1, lat2, lon2):
     """Азимут из точки 1 в точку 2 (градусы)."""
@@ -242,10 +124,9 @@ def calculate_bearing(lat1, lon1, lat2, lon2):
 
 def calculate_route_position(origin_iata, dest_iata, takeoff_iso, landing_iso):
     """Расчётная позиция самолёта по линейному прогрессу рейса (для карты)."""
-    o = get_airport_info(origin_iata)
-    d = get_airport_info(dest_iata)
-    if not isinstance(o, dict) or not isinstance(d, dict):
+    if origin_iata not in AIRPORTS or dest_iata not in AIRPORTS:
         return None
+    o, d = AIRPORTS[origin_iata], AIRPORTS[dest_iata]
     try:
         t0 = datetime.fromisoformat(takeoff_iso.replace("Z", "+00:00"))
         t1 = datetime.fromisoformat(landing_iso.replace("Z", "+00:00"))
@@ -283,206 +164,183 @@ schedule_cache     = {r: {"current": None, "upcoming": []} for r in AIRCRAFT_REG
 track_history      = {r: [] for r in AIRCRAFT_REGISTRATIONS}
 last_schedule_update = 0
 notified_delays    = set()
+last_notified_status = {} # Хранит последний статус, о котором было отправлено уведомление
 
 # ─── MAIN POLL ────────────────────────────────────────────────────────────────
 def fetch_data():
-    global flight_cache, schedule_cache, last_schedule_update, notified_delays, last_background_error
+    global flight_cache, schedule_cache, last_schedule_update, notified_delays
     now_ts = time.time()
-
-    # 0. Самоочистка кэша раз в сутки (в 03:00 UTC или около того)
-    now_dt = datetime.now(timezone.utc)
-    if now_dt.hour == 3 and now_dt.minute < 10:
-        with data_lock:
-            notified_delays.clear()
-            logger.info("🧹 Ежедневная очистка кэша уведомлений")
 
     # 1. Расписание — раз в 10 минут
     if now_ts - last_schedule_update > 600:
         try:
-            logger.info("🔄 Синхронизация с АвиаБит...")
             all_plan = schedule_service.get_flight_plan(search_regs=AIRCRAFT_REGISTRATIONS)
-            
-            if all_plan:
-                now_iso = datetime.now(timezone.utc).isoformat()
-                with data_lock:
-                    for reg in AIRCRAFT_REGISTRATIONS:
-                        reg_n = reg.replace("-", "").upper().strip()
-                        plane = sorted(
-                            [f for f in all_plan if str(f.get("pln","")).replace("-","").upper().strip() == reg_n],
-                            key=lambda x: x.get("dateTakeoff", ""))
-                        cur, upc = None, []
-                        for f in plane:
-                            if f.get("dateTakeoff","") <= now_iso <= f.get("dateLanding","") or f.get("status") == 1:
-                                cur = f
-                            elif f.get("dateTakeoff","") > now_iso:
-                                upc.append(f)
-                        schedule_cache[reg] = {"current": cur, "upcoming": upc[:5]}
-                last_schedule_update = now_ts
-                logger.info(f"✨ Расписание успешно обновлено ({len(all_plan)} рейсов)")
-            else:
-                # План пустой — пробуем чаще (через минуту), но не затираем старые данные
+            if not all_plan:
                 last_schedule_update = now_ts - 540
-                logger.warning("🕒 АвиаБит вернул пустоту — оставляем старые данные в кэше и пробуем позже")
-
+                logger.warning("🕒 АвиаБит вернул пустоту")
+                return
+            now_iso = datetime.now(timezone.utc).isoformat()
+            with data_lock:
+                for reg in AIRCRAFT_REGISTRATIONS:
+                    reg_n = reg.replace("-", "").upper()
+                    plane = sorted(
+                        [f for f in all_plan if str(f.get("pln","")).replace("-","").upper() == reg_n],
+                        key=lambda x: x.get("dateTakeoff", ""))
+                    cur, upc = None, []
+                    for f in plane:
+                        if f.get("dateTakeoff","") <= now_iso <= f.get("dateLanding","") or f.get("status") == 1:
+                            cur = f
+                        elif f.get("dateTakeoff","") > now_iso:
+                            upc.append(f)
+                    schedule_cache[reg] = {"current": cur, "upcoming": upc[:5]}
+                last_schedule_update = now_ts
+                logger.info("✨ Расписание обновлено")
         except Exception as e:
-            last_background_error = f"Schedule error: {e}"
-            logger.error(f"❌ Ошибка синхронизации расписания: {e}")
-            last_schedule_update = now_ts - 540 # Пробуем через 60 секунд
+            logger.error(f"Schedule error: {e}")
+            last_schedule_update = now_ts - 540
 
     # 2. Для каждого борта — FR24 + позиция
     found = {}
     for reg in AIRCRAFT_REGISTRATIONS:
+        with data_lock:
+            sched    = schedule_cache.get(reg, {}).get("current")
+            upcoming = schedule_cache.get(reg, {}).get("upcoming", [])
+
+        # FR24 — только для проверки факта полёта
+        fr24_found    = False
+        fr24_alt      = 0
+        fr24_gs       = 0
+        fr24_on_ground = False
+        fr24_callsign = None
         try:
-            with data_lock:
-                sched    = schedule_cache.get(reg, {}).get("current")
-                upcoming = schedule_cache.get(reg, {}).get("upcoming", [])
+            flights = fr_api.get_flights(registration=reg)
+            if flights:
+                fl = flights[0]
+                fr24_alt      = fl.altitude or 0
+                fr24_gs       = fl.ground_speed or 0
+                fr24_on_ground = getattr(fl, 'on_ground', 0) == 1
+                fr24_callsign = fl.callsign
+                fr24_found    = True
+                # Сохраняем позицию в БД (последняя известная точка)
+                if fl.latitude and fl.longitude:
+                    save_last_position(reg, fl.latitude, fl.longitude, fl.callsign)
+                    with data_lock:
+                        track_history[reg].append(
+                            {"lat": fl.latitude, "lng": fl.longitude, "ts": time.time()})
+                        track_history[reg] = track_history[reg][-MAX_TRACK_POINTS:]
+        except Exception as e:
+            logger.warning(f"FR24 {reg}: {e}")
 
-            # FR24 — только для проверки факта полёта
-            fr24_found = False
-            fr24_alt   = 0
-            fr24_callsign = None
-            fr24_lat = fr24_lon = None  # Реальные GPS-координаты с FR24
+        # Аэропорты из расписания
+        origin_iata = (sched.get("airPortTOCode") if sched else None) or "—"
+        dest_iata   = (sched.get("airPortLACode")  if sched else None) or "—"
+        origin_full = get_airport_info(origin_iata)
+        dest_full   = get_airport_info(dest_iata)
+
+        # Координаты аэропортов для карты
+        origin_coords = ({"lat": AIRPORTS[origin_iata]["lat"], "lon": AIRPORTS[origin_iata]["lon"]}
+                         if origin_iata in AIRPORTS else None)
+        dest_coords   = ({"lat": AIRPORTS[dest_iata]["lat"],   "lon": AIRPORTS[dest_iata]["lon"]}
+                         if dest_iata in AIRPORTS else None)
+
+        # Маршрутный азимут
+        route_heading = 0
+        if origin_coords and dest_coords:
+            route_heading = calculate_bearing(
+                origin_coords["lat"], origin_coords["lon"],
+                dest_coords["lat"],   dest_coords["lon"])
+
+        # ── Определяем статус и позицию ──────────────────────────────────────
+        lat = lon = None
+        status        = "offline"
+        position_type = None
+        route_progress = None
+        callsign = fr24_callsign or (sched.get("flight") if sched else "N/A") or "N/A"
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if fr24_found:
+            # FR24 подтвердил борт
+            # Используем on_ground и скорость для определения статуса
+            status        = "ground" if fr24_on_ground else "airborne"
             
-            # Пытаемся найти борт (с дефисом и без)
-            regs_to_try = [reg]
-            if "-" in reg:
-                regs_to_try.append(reg.replace("-", ""))
-            elif reg.startswith("UK") and len(reg) > 2:
-                regs_to_try.append(f"UK-{reg[2:]}")
-
-            try:
-                flights = []
-                for r in set(regs_to_try):
-                    flights = fr_api.get_flights(registration=r)
-                    if flights: break
-
-                if flights:
-                    fl = flights[0]
-                    fr24_alt      = fl.altitude or 0
-                    fr24_vspeed   = getattr(fl, 'vertical_speed', 0) or 0
-                    fr24_callsign = fl.callsign
-                    fr24_found    = True
-                    # Сохраняем позицию в БД и запоминаем реальные координаты
-                    if fl.latitude and fl.longitude:
-                        fr24_lat = fl.latitude
-                        fr24_lon = fl.longitude
-                        save_last_position(reg, fl.latitude, fl.longitude, fl.callsign)
-                        with data_lock:
-                            track_history[reg].append(
-                                {"lat": fl.latitude, "lng": fl.longitude, "ts": time.time()})
-                            track_history[reg] = track_history[reg][-MAX_TRACK_POINTS:]
-                    logger.info(f"✈️ FR24 нашёл {reg}: высота={fr24_alt}ft, v_speed={fr24_vspeed}, callsign={fr24_callsign}")
-            except Exception as e:
-                logger.warning(f"FR24 {reg}: {e}")
-
-            # Аэропорты из расписания
-            origin_iata = (sched.get("airPortTOCode") if sched else None) or "—"
-            dest_iata   = (sched.get("airPortLACode") if sched else None) or "—"
-
-            # Если текущего рейса нет — пробуем взять аэропорты из ближайшего предстоящего
-            if origin_iata == "—" and upcoming:
-                origin_iata = upcoming[0].get("airPortTOCode") or "—"
-                dest_iata   = upcoming[0].get("airPortLACode") or "—"
-
-            o_data = get_airport_info(origin_iata)
-            d_data = get_airport_info(dest_iata)
+            # Дополнительная проверка: если летит быстро, точно airborne
+            if status == "ground" and fr24_gs > 50: status = "airborne"
             
-            origin_full = f"{o_data['name']}, {o_data['country']} ({origin_iata})" if isinstance(o_data, dict) else origin_iata
-            dest_full   = f"{d_data['name']}, {d_data['country']} ({dest_iata})" if isinstance(d_data, dict) else dest_iata
-            
-            # Координаты аэропортов для карты
-            origin_coords = {"lat": o_data["lat"], "lon": o_data["lon"]} if isinstance(o_data, dict) else None
-            dest_coords   = {"lat": d_data["lat"], "lon": d_data["lon"]} if isinstance(d_data, dict) else None
-            
-            # Маршрутный азимут
-            route_heading = 0
-            if origin_coords and dest_coords:
-                route_heading = calculate_bearing(
-                    origin_coords["lat"], origin_coords["lon"],
-                    dest_coords["lat"],   dest_coords["lon"])
+            position_type = "live"
+            # Позиция — расчётная по маршруту (FR24 GPS не используем для отображения)
+            if sched and sched.get("dateTakeoff") and sched.get("dateLanding"):
+                est = calculate_route_position(origin_iata, dest_iata,
+                                               sched["dateTakeoff"], sched["dateLanding"])
+                if est:
+                    lat, lon = est["lat"], est["lon"]
+                    route_progress = est["progress"]
+            if lat is None and origin_coords:
+                lat, lon = origin_coords["lat"], origin_coords["lon"]
 
-            # ── Определяем статус и позицию ──────────────────────────────────────
-            lat = lon = None
-            status        = "offline"
-            position_type = None
-            route_progress = None
-            callsign = fr24_callsign or (sched.get("flight") if sched else "N/A") or "N/A"
-
-            now_iso = datetime.now(timezone.utc).isoformat()
-
-            if fr24_found:
-                # FR24 подтвердил борт
-                # Считаем airborne если высота > 200 или есть уверенный вертикальный набор > 200
-                status        = "airborne" if (fr24_alt > 200 or abs(fr24_vspeed) > 200) else "ground"
-                position_type = "live"
-                # Позиция: приоритет — реальный GPS FR24, затем расчётная по маршруту
-                if fr24_lat is not None:
-                    lat, lon = fr24_lat, fr24_lon
-                if sched and sched.get("dateTakeoff") and sched.get("dateLanding"):
-                    est = calculate_route_position(origin_iata, dest_iata,
-                                                   sched["dateTakeoff"], sched["dateLanding"])
-                    if est:
-                        route_progress = est["progress"]
-                        if lat is None: lat, lon = est["lat"], est["lon"]
-                if lat is None and origin_coords:
-                    lat, lon = origin_coords["lat"], origin_coords["lon"]
-
-            elif sched:
-                t0 = sched.get("dateTakeoff", "")
-                t1 = sched.get("dateLanding", "")
-                if t0 and t1 and t0 <= now_iso <= t1:
-                    est = calculate_route_position(origin_iata, dest_iata, t0, t1)
-                    if est:
-                        lat, lon = est["lat"], est["lon"]
-                        route_progress = est["progress"]
-                        status        = "airborne"
-                        position_type = "estimated"
-                    else:
-                        last_pos = get_last_position(reg)
-                        if last_pos: lat, lon = last_pos["lat"], last_pos["lon"]
-                        status        = "airborne"
-                        position_type = "last_known"
+        elif sched:
+            t0 = sched.get("dateTakeoff", "")
+            t1 = sched.get("dateLanding", "")
+            if t0 and t1 and t0 <= now_iso <= t1:
+                # По расписанию должен быть в воздухе, но FR24 не нашёл
+                est = calculate_route_position(origin_iata, dest_iata, t0, t1)
+                if est:
+                    lat, lon = est["lat"], est["lon"]
+                    route_progress = est["progress"]
+                    status        = "airborne"
+                    position_type = "estimated"
                 else:
                     last_pos = get_last_position(reg)
                     if last_pos: lat, lon = last_pos["lat"], last_pos["lon"]
-                    status        = "ground"
-                    position_type = "last_known" if last_pos else None
+                    status        = "airborne"
+                    position_type = "last_known"
             else:
+                # На земле по расписанию
                 last_pos = get_last_position(reg)
                 if last_pos: lat, lon = last_pos["lat"], last_pos["lon"]
-                status        = "offline"
+                status        = "ground"
                 position_type = "last_known" if last_pos else None
+        else:
+            last_pos = get_last_position(reg)
+            if last_pos: lat, lon = last_pos["lat"], last_pos["lon"]
+            status        = "offline"
+            position_type = "last_known" if last_pos else None
 
-            if route_progress is None and sched and sched.get("dateTakeoff") and sched.get("dateLanding"):
-                est = calculate_route_position(origin_iata, dest_iata,
-                                               sched["dateTakeoff"], sched["dateLanding"])
-                if est: route_progress = est["progress"]
+        # Прогресс маршрута (если ещё не задан)
+        if route_progress is None and sched and sched.get("dateTakeoff") and sched.get("dateLanding"):
+            est = calculate_route_position(origin_iata, dest_iata,
+                                           sched["dateTakeoff"], sched["dateLanding"])
+            if est: route_progress = est["progress"]
 
-            eta_minutes = None
-            if sched and sched.get("dateLanding"):
-                try:
-                    t1 = datetime.fromisoformat(sched["dateLanding"].replace("Z", "+00:00"))
-                    m  = int((t1 - datetime.now(timezone.utc)).total_seconds() / 60)
-                    if m > 0: eta_minutes = m
-                except: pass
+        # ETA — из расписания
+        eta_minutes = None
+        if sched and sched.get("dateLanding"):
+            try:
+                t1 = datetime.fromisoformat(sched["dateLanding"].replace("Z", "+00:00"))
+                m  = int((t1 - datetime.now(timezone.utc)).total_seconds() / 60)
+                if m > 0: eta_minutes = m
+            except: pass
 
-            duration_mins = 0
-            if sched and sched.get("dateTakeoff"):
-                try:
-                    t0 = datetime.fromisoformat(sched["dateTakeoff"].replace("Z", "+00:00"))
-                    d  = int((datetime.now(timezone.utc) - t0).total_seconds() / 60)
-                    if d > 0: duration_mins = d
-                except: pass
+        # Время в воздухе
+        duration_mins = 0
+        if sched and sched.get("dateTakeoff"):
+            try:
+                t0 = datetime.fromisoformat(sched["dateTakeoff"].replace("Z", "+00:00"))
+                d  = int((datetime.now(timezone.utc) - t0).total_seconds() / 60)
+                if d > 0: duration_mins = d
+            except: pass
 
-            delay_minutes = 0
-            if status != "airborne" and upcoming:
-                nf = upcoming[0]
-                try:
-                    tp = datetime.fromisoformat(nf.get("dateTakeoff","").replace("Z","+00:00"))
-                    delay = (datetime.now(timezone.utc) - tp).total_seconds() / 60
-                    if delay > 15:
-                        delay_minutes = int(delay)
-                        fid = f"{reg}_{nf.get('flight')}_{nf.get('dateTakeoff')}"
+        # Задержка
+        delay_minutes = 0
+        if status != "airborne" and upcoming:
+            nf = upcoming[0]
+            try:
+                tp = datetime.fromisoformat(nf.get("dateTakeoff","").replace("Z","+00:00"))
+                delay = (datetime.now(timezone.utc) - tp).total_seconds() / 60
+                if delay > 15:
+                    delay_minutes = int(delay)
+                    fid = f"{reg}_{nf.get('flight')}_{nf.get('dateTakeoff')}"
+                    with data_lock:
                         if fid not in notified_delays:
                             send_telegram(
                                 f"⚠️ ЗАДЕРЖКА ВЫЛЕТА\n━━━━━━━━━━━━━━━━━━━━\n"
@@ -491,60 +349,66 @@ def fetch_data():
                                 f"⏰ План: {tp.strftime('%H:%M UTC')}\n"
                                 f"⏳ Опаздывает на: {delay_minutes} мин\n━━━━━━━━━━━━━━━━━━━━")
                             notified_delays.add(fid)
-                except: pass
+            except: pass
 
+        # Уведомление о смене статуса
+        with data_lock:
+            prev_notified = last_notified_status.get(reg)
+            
+        # Уведомляем только если статус изменился и у нас есть ЖИВЫЕ данные
+        if position_type == "live" and prev_notified and prev_notified != status:
+            name    = AIRCRAFT_CONFIG[reg]['name']
+            now_dt  = datetime.now(timezone.utc)
+            title   = "✈️ ВЗЛЁТ БОРТА" if status == "airborne" else "🛬 ПОСАДКА БОРТА"
+            footer  = "🛫 Удачного полета!" if status == "airborne" else "✅ Борт успешно завершил рейс."
+            msg = (f"{title}\n━━━━━━━━━━━━━━━━━━━━\n"
+                   f"✈️  Борт:       {name}\n"
+                   f"🎫  Рейс:       {callsign}\n"
+                   f"🛫  Вылет:      {origin_full}\n"
+                   f"🛬  Прибытие:   {dest_full}\n"
+                   f"📅  Дата:       {now_dt.strftime('%d.%m.%Y')}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"🕐  Время:      {now_dt.strftime('%H:%M UTC')}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n{footer}")
+            add_alert(f"{title}: {name} ({callsign})")
+            send_telegram(msg)
+            logger.info(f"🔔 ALERT: {title} {name} (Status changed {prev_notified} -> {status})")
+            
+        # Обновляем последний известный статус (независимо от position_type, но уведомляем только по live)
+        if status != "offline":
             with data_lock:
-                prev = flight_cache.get(reg)
-            status_prev = prev.get("status") if prev else None
-            if status_prev and status_prev != status and position_type == "live":
-                name    = AIRCRAFT_CONFIG[reg]['name']
-                now_dt  = datetime.now(timezone.utc)
-                title   = "✈️ ВЗЛЁТ БОРТА" if status == "airborne" else "🛬 ПОСАДКА БОРТА"
-                footer  = "🛫 Удачного полета!" if status == "airborne" else "✅ Борт успешно завершил рейс."
-                msg = (f"{title}\n━━━━━━━━━━━━━━━━━━━━\n"
-                       f"✈️  Борт:       {name}\n"
-                       f"🎫  Рейс:       {callsign}\n"
-                       f"🛫  Вылет:      {origin_full}\n"
-                       f"🛬  Прибытие:   {dest_full}\n"
-                       f"📅  Дата:       {now_dt.strftime('%d.%m.%Y')}\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"🕐  Время:      {now_dt.strftime('%H:%M UTC')}\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n{footer}")
-                add_alert(f"{title}: {name} ({callsign})")
-                send_telegram(msg)
-                logger.info(f"Alert: {title} {name}")
+                last_notified_status[reg] = status
 
-            next_dep_ts  = None
-            next_dep_flight = None
-            if upcoming:
-                try:
-                    t0 = datetime.fromisoformat(upcoming[0]["dateTakeoff"].replace("Z","+00:00"))
-                    next_dep_ts     = t0.timestamp()
-                    next_dep_flight = upcoming[0].get("flight")
-                except: pass
+        # Следующий вылет: timestamp и рейс (для фронтенд-таймера)
+        next_dep_ts  = None
+        next_dep_flight = None
+        if upcoming:
+            try:
+                t0 = datetime.fromisoformat(upcoming[0]["dateTakeoff"].replace("Z","+00:00"))
+                next_dep_ts     = t0.timestamp()
+                next_dep_flight = upcoming[0].get("flight")
+            except: pass
 
-            origin_temp = get_airport_weather(origin_iata, origin_coords["lat"], origin_coords["lon"]) if origin_coords else None
-            dest_temp   = get_airport_weather(dest_iata, dest_coords["lat"], dest_coords["lon"]) if dest_coords else None
+        origin_temp = get_airport_weather(origin_iata, origin_coords["lat"], origin_coords["lon"]) if origin_coords else None
+        dest_temp   = get_airport_weather(dest_iata, dest_coords["lat"], dest_coords["lon"]) if dest_coords else None
 
-            found[reg] = {
-                "registration": reg, "callsign": callsign,
-                "latitude": lat, "longitude": lon,
-                "altitude": (fr24_alt if fr24_found else 0),
-                "speed": 0, "heading": route_heading,
-                "vertical_speed": 0,
-                "origin": origin_full, "destination": dest_full,
-                "origin_iata": origin_iata, "dest_iata": dest_iata,
-                "origin_temp": origin_temp, "dest_temp": dest_temp,
-                "aircraft_model": "B757",
-                "status": status, "position_type": position_type,
-                "eta": eta_minutes, "duration": duration_mins,
-                "timestamp": time.time(), "delay": delay_minutes,
-                "origin_coords": origin_coords, "dest_coords": dest_coords,
-                "route_progress": route_progress,
-                "next_dep_ts": next_dep_ts, "next_dep_flight": next_dep_flight,
-            }
-        except Exception as e:
-            logger.error(f"❌ Ошибка при обработке борта {reg}: {e}", exc_info=True)
+        found[reg] = {
+            "registration": reg, "callsign": callsign,
+            "latitude": lat, "longitude": lon,
+            "altitude": (fr24_alt if fr24_found else 0),
+            "speed": 0, "heading": route_heading,
+            "vertical_speed": 0,
+            "origin": origin_full, "destination": dest_full,
+            "origin_iata": origin_iata, "dest_iata": dest_iata,
+            "origin_temp": origin_temp, "dest_temp": dest_temp,
+            "aircraft_model": "B757",
+            "status": status, "position_type": position_type,
+            "eta": eta_minutes, "duration": duration_mins,
+            "timestamp": time.time(), "delay": delay_minutes,
+            "origin_coords": origin_coords, "dest_coords": dest_coords,
+            "route_progress": route_progress,
+            "next_dep_ts": next_dep_ts, "next_dep_flight": next_dep_flight,
+        }
 
     with data_lock:
         for reg in AIRCRAFT_REGISTRATIONS:
@@ -556,6 +420,7 @@ def get_adaptive_interval():
     now = datetime.now(timezone.utc)
     with data_lock:
         for reg in AIRCRAFT_REGISTRATIONS:
+            # Проверяем текущий рейс и предстоящие
             cur = schedule_cache.get(reg, {}).get("current")
             upc = schedule_cache.get(reg, {}).get("upcoming", [])
             flights_to_check = ([cur] if cur else []) + upc
@@ -566,13 +431,14 @@ def get_adaptive_interval():
                 try:
                     t0 = datetime.fromisoformat(t0_str.replace("Z", "+00:00"))
                     mins = (t0 - now).total_seconds() / 60
+                    # Активная зона: за 60 мин до и 10 мин после вылета
                     if -10 <= mins <= 60:
                         min_until = min(min_until, mins)
                 except: pass
-    if min_until <= 10:   return 5
-    if min_until <= 30:   return 10
-    if min_until <= 60:   return 15
-    return POLL_INTERVAL
+    if min_until <= 10:   return 5   # каждые 5 сек
+    if min_until <= 30:   return 10  # каждые 10 сек
+    if min_until <= 60:   return 15  # каждые 15 сек
+    return POLL_INTERVAL             # штатный интервал
 
 def background_poll():
     while True:
@@ -590,23 +456,20 @@ def api_flights():
             sched_mapped = {"current": None, "upcoming": []}
             if sched.get("current"):
                 c = dict(sched["current"])
-                o_f = get_airport_info(c.get("airPortTOCode"))
-                d_f = get_airport_info(c.get("airPortLACode"))
-                c["origin_full"] = f"{o_f['name']}, {o_f['country']} ({c.get('airPortTOCode')})" if isinstance(o_f, dict) else c.get('airPortTOCode')
-                c["dest_full"]   = f"{d_f['name']}, {d_f['country']} ({c.get('airPortLACode')})" if isinstance(d_f, dict) else c.get('airPortLACode')
+                c["origin_full"] = get_airport_info(c.get("airPortTOCode"))
+                c["dest_full"]   = get_airport_info(c.get("airPortLACode"))
                 sched_mapped["current"] = c
             for u in sched.get("upcoming", []):
                 item = dict(u)
-                o_f = get_airport_info(item.get("airPortTOCode"))
-                d_f = get_airport_info(item.get("airPortLACode"))
-                item["origin_full"] = f"{o_f['name']}, {o_f['country']} ({item.get('airPortTOCode')})" if isinstance(o_f, dict) else item.get('airPortTOCode')
-                item["dest_full"]   = f"{d_f['name']}, {d_f['country']} ({item.get('airPortLACode')})" if isinstance(d_f, dict) else item.get('airPortLACode')
+                item["origin_full"] = get_airport_info(item.get("airPortTOCode"))
+                item["dest_full"]   = get_airport_info(item.get("airPortLACode"))
                 sched_mapped["upcoming"].append(item)
 
             if data:
                 entry = dict(data)
             else:
                 last_pos = get_last_position(reg)
+                # Берём ближайший предстоящий рейс для отображения маршрута
                 next_f = sched_mapped["upcoming"][0] if sched_mapped.get("upcoming") else None
                 entry = {
                     "registration": reg, "status": "offline",
@@ -634,82 +497,11 @@ def api_flights():
 def api_alerts():
     return jsonify(get_alerts(50))
 
-@app.route("/api/status")
-def api_status():
-    aviabit_info = {
-        "url": AVIABIT_CREDENTIALS.get("base_url", "https://ab-web.aviastartu.ru"),
-        "username": AVIABIT_CREDENTIALS.get("username"),
-        "reachable": False,
-        "message": "",
-        "body": ""
-    }
-    try:
-        headers = {"Origin": aviabit_info["url"]}
-        r = requests.get(aviabit_info["url"] + "/api/auth", timeout=5, verify=False, headers=headers)
-        aviabit_info["message"] = f"HTTP {r.status_code}"
-        aviabit_info["reachable"] = r.status_code in (200, 400, 401, 403, 405)
-    except Exception as e:
-        aviabit_info["message"] = str(e)
-
-    fr24_status = {"reachable": False, "message": ""}
-    try:
-        test = fr_api.get_flights(registration="UK75058")
-        fr24_status["reachable"] = True
-        fr24_status["message"] = f"OK, нашёл {len(test)} рейс(ов)"
-    except Exception as e:
-        fr24_status["message"] = str(e)
-
-    return jsonify({
-        "aviabit": aviabit_info,
-        "fr24": fr24_status,
-        "schedule_last_update": last_schedule_update,
-        "now": time.time(),
-        "background_error": last_background_error,
-        "threads": {
-            "active_count": threading.active_count(),
-            "names": [t.name for t in threading.enumerate()]
-        },
-        "aircraft": AIRCRAFT_REGISTRATIONS,
-        "config_source": "config.json" if (config is not None) else "environment_variables"
-    })
-
 @app.route("/")
 def index():
-    # Попытка запуска потоков при первом обращении (надёжно для всех серверов)
-    threading.Thread(target=safe_start_threads, daemon=True).start()
     return render_template("index.html")
 
-def safe_start_threads():
-    """Запускает мониторинг один раз, даже если воркеров много."""
-    global _threads_started, _lock_acquired
-    if _threads_started: return
-
-    # Кросс-процессная блокировка через файл
-    lock_path = 'skyguard.lock'
-    try:
-        f = open(lock_path, 'w')
-        if fcntl: # Linux
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        elif msvcrt: # Windows
-            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-        
-        # Если блокировка получена — этот воркер будет "главным"
-        _lock_acquired = True
-        with data_lock:
-            if _threads_started: return
-            threading.Thread(target=background_poll, name="BgPollThread", daemon=True).start()
-            _threads_started = True
-        
-        logger.info("🚀 Крот-мониторинг запущен (Воркер-Мастер)")
-        send_telegram("🚀 Skyguard Online: Мониторинг запущен успешно.")
-    except Exception:
-        # Блокировка уже занята другим воркером
-        pass
-
 if __name__ == "__main__":
-    # Локальный запуск (Flask Dev Server)
-    if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
-        threading.Thread(target=safe_start_threads, daemon=True).start()
-
-    port = int(os.environ.get("PORT", 5050))
-    app.run(debug=False, port=port, host="0.0.0.0")
+    # background_poll уже вызывает fetch_data первым делом
+    threading.Thread(target=background_poll, daemon=True).start()
+    app.run(debug=False, port=5050, host="0.0.0.0")
