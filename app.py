@@ -906,6 +906,22 @@ def parse_crew_comment(comment_text):
             })
     return result
 
+def merge_crew(xml_crew, comment_crew):
+    """Объединяет XML экипаж (пилоты) с экипажем из комментариев, исключая дублей по имени."""
+    if not comment_crew:
+        return xml_crew
+    if not xml_crew:
+        return comment_crew
+    existing = {m['name'].upper().replace(' ', '') for m in xml_crew}
+    merged = list(xml_crew)
+    offset = max((m['order'] for m in xml_crew), default=0) + 1
+    for i, member in enumerate(comment_crew):
+        if member['name'].upper().replace(' ', '') not in existing:
+            m = dict(member)
+            m['order'] = offset + i
+            merged.append(m)
+    return merged
+
 @app.route("/api/crew")
 def api_crew():
     flight = request.args.get('flight', '').strip()
@@ -935,15 +951,15 @@ def api_crew():
     for entry in cached_entries:
         if str(entry.get("flight", "")).replace("-", "").upper() == fn_norm:
             parsed = parse_crew_xml(entry.get("crew", ""))
-            if parsed:
-                return jsonify({'crew': parsed, 'error': None, 'flight': flight})
-            # XML пустой — пробуем комментарий через preliminary-crew-load
-            pf_id = entry.get("pfRecordId")
+            pf_id  = entry.get("pfRecordId")
+            comment_crew = []
             if pf_id:
                 comment = schedule_service.get_preliminary_crew_comment(pf_id)
-                crew_from_comment = parse_crew_comment(comment)
-                if crew_from_comment:
-                    return jsonify({'crew': crew_from_comment, 'error': None, 'flight': flight, 'source': 'comment'})
+                comment_crew = parse_crew_comment(comment)
+            merged = merge_crew(parsed, comment_crew)
+            if merged:
+                src = 'combined' if (parsed and comment_crew) else ('comment' if comment_crew else 'xml')
+                return jsonify({'crew': merged, 'error': None, 'flight': flight, 'source': src})
 
     # 2. Запрашиваем расширенный план (30 дней) и ищем там
     try:
@@ -951,14 +967,15 @@ def api_crew():
         for entry in all_plan:
             if str(entry.get("flight", "")).replace("-", "").upper() == fn_norm:
                 parsed = parse_crew_xml(entry.get("crew", ""))
-                if parsed:
-                    return jsonify({'crew': parsed, 'error': None, 'flight': flight})
-                pf_id = entry.get("pfRecordId")
+                pf_id  = entry.get("pfRecordId")
+                comment_crew = []
                 if pf_id:
                     comment = schedule_service.get_preliminary_crew_comment(pf_id)
-                    crew_from_comment = parse_crew_comment(comment)
-                    if crew_from_comment:
-                        return jsonify({'crew': crew_from_comment, 'error': None, 'flight': flight, 'source': 'comment'})
+                    comment_crew = parse_crew_comment(comment)
+                merged = merge_crew(parsed, comment_crew)
+                if merged:
+                    src = 'combined' if (parsed and comment_crew) else ('comment' if comment_crew else 'xml')
+                    return jsonify({'crew': merged, 'error': None, 'flight': flight, 'source': src})
         return jsonify({'crew': [], 'error': 'Экипаж не назначен для этого рейса', 'flight': flight})
     except Exception as e:
         logger.error(f"Crew API {flight}: {e}")
