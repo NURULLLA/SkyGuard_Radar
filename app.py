@@ -454,7 +454,6 @@ def fetch_data():
             if not all_plan:
                 last_schedule_update = now_ts - 540
                 logger.warning("🕒 АвиаБит вернул пустоту")
-                return
             now_iso = datetime.now(timezone.utc).isoformat()
             with data_lock:
                 for reg in AIRCRAFT_REGISTRATIONS:
