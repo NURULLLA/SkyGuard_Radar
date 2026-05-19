@@ -126,3 +126,115 @@ class SkyguardScheduleService:
                 upcoming.append(f)
                 
         return current, upcoming[:5]
+
+    def get_crew_for_flight(self, flight_num, date_str=None):
+        """Получает список экипажа для рейса из АвиаБит."""
+        if not self.logged_in and not self.login():
+            return [], "Не авторизован в АвиаБит"
+
+        if date_str:
+            try:
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                begin = int((dt - timedelta(hours=2)).timestamp() * 1000)
+                end   = int((dt + timedelta(hours=26)).timestamp() * 1000)
+            except Exception:
+                now = datetime.now()
+                begin = int((now - timedelta(days=1)).timestamp() * 1000)
+                end   = int((now + timedelta(days=2)).timestamp() * 1000)
+        else:
+            now = datetime.now()
+            begin = int((now - timedelta(days=1)).timestamp() * 1000)
+            end   = int((now + timedelta(days=2)).timestamp() * 1000)
+
+        params = {
+            "dateBegin":  begin,
+            "dateEnd":    end,
+            "flight":     flight_num,
+            "template":   "0",
+            "showCancel": "false",
+            "eng":        "false",
+        }
+        headers = {"Referer": f"{self.base_url}/plan-crew"}
+
+        for endpoint in ["/api/plan-crew", "/api/crew-schedule", "/api/crew"]:
+            try:
+                url  = f"{self.base_url}{endpoint}"
+                resp = self.session.get(url, params=params, timeout=10, verify=False, headers=headers)
+                if resp.status_code == 401:
+                    if self.login():
+                        resp = self.session.get(url, params=params, timeout=10, verify=False, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list) and data:
+                        logger.info(f"✅ Экипаж для {flight_num} получен через {endpoint}")
+                        return data, None
+                    elif isinstance(data, dict) and data:
+                        return [data], None
+                elif resp.status_code == 404:
+                    continue
+            except Exception as e:
+                logger.warning(f"Crew {endpoint}: {e}")
+                continue
+
+        return [], "Данные экипажа недоступны в АвиаБит"
+
+    def get_preliminary_crew_comment(self, pf_record_id):
+        """Возвращает текстовый список экипажа из поля comments.MarkFlightNumber."""
+        if not self.logged_in and not self.login():
+            return None
+        url = f"{self.base_url}/api/preliminary-crew-load"
+        params = {"planFlightId": pf_record_id, "eng": "false"}
+        headers = {"Referer": f"{self.base_url}/flight-card?planFlightId={pf_record_id}"}
+        try:
+            resp = self.session.get(url, params=params, timeout=10, verify=False, headers=headers)
+            if resp.status_code == 401:
+                if self.login():
+                    resp = self.session.get(url, params=params, timeout=10, verify=False, headers=headers)
+            if resp.status_code == 200 and 'application/json' in resp.headers.get('content-type', ''):
+                data = resp.json()
+                comments = data.get('comments') or {}
+                mark = comments.get('MarkFlightNumber') or ''
+                if mark.strip():
+                    logger.info(f"✅ Комментарий экипажа получен для planFlightId={pf_record_id}")
+                    return mark.strip()
+        except Exception as e:
+            logger.warning(f"preliminary-crew-load error: {e}")
+        return None
+
+    def get_past_flights(self, search_regs=None, days_back=30):
+        """Возвращает завершённые рейсы за последние N дней."""
+        if not self.logged_in and not self.login():
+            return []
+
+        url     = f"{self.base_url}/api/plan-flight"
+        headers = {"Referer": f"{self.base_url}/plan-flight"}
+        now     = datetime.now()
+        begin   = int((now - timedelta(days=days_back)).timestamp() * 1000)
+        end     = int(now.timestamp() * 1000)
+
+        params = {
+            "dateBegin":  begin,
+            "dateEnd":    end,
+            "eng":        "false",
+            "apCode":     "3",
+            "apId":       "0",
+            "template":   "0",
+            "showCancel": "false",
+        }
+
+        try:
+            resp = self.session.get(url, params=params, timeout=20, verify=False, headers=headers)
+            if resp.status_code == 401:
+                if self.login():
+                    resp = self.session.get(url, params=params, timeout=20, verify=False, headers=headers)
+            if resp.status_code == 200:
+                data    = resp.json()
+                now_iso = datetime.now(timezone.utc).isoformat()
+                past    = [f for f in data if f.get("dateLanding", "9") < now_iso]
+                if search_regs:
+                    norms = [r.replace("-", "").upper() for r in search_regs]
+                    past  = [f for f in past if str(f.get("pln", "")).replace("-", "").upper() in norms]
+                return sorted(past, key=lambda x: x.get("dateLanding", ""), reverse=True)
+        except Exception as e:
+            logger.error(f"Past flights error: {e}")
+        return []
