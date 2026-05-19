@@ -765,6 +765,20 @@ def background_poll():
         interval = get_adaptive_interval()
         time.sleep(interval)
 
+# ─── Background thread — lazy start in worker process (survives Gunicorn fork) ─
+_bg_thread = None
+_bg_thread_lock = threading.Lock()
+
+@app.before_request
+def ensure_bg_thread():
+    global _bg_thread
+    if _bg_thread is None or not _bg_thread.is_alive():
+        with _bg_thread_lock:
+            if _bg_thread is None or not _bg_thread.is_alive():
+                logger.info(f"▶ Starting background thread in worker pid={os.getpid()}")
+                _bg_thread = threading.Thread(target=background_poll, daemon=True)
+                _bg_thread.start()
+
 # ─── API ──────────────────────────────────────────────────────────────────────
 @app.after_request
 def no_keepalive(response):
@@ -997,11 +1011,10 @@ def api_notam(iata):
 def index():
     return render_template("index.html")
 
-# Start background thread on module import (works with both `python app.py` and Gunicorn)
-logger.info(f"📦 Module loaded — pid={os.getpid()}, starting background thread")
-_bg_thread = threading.Thread(target=background_poll, daemon=True)
-_bg_thread.start()
-logger.info(f"✅ Background thread launched — alive={_bg_thread.is_alive()}")
+logger.info(f"📦 Module loaded — pid={os.getpid()}")
 
 if __name__ == "__main__":
+    # Start thread immediately when running directly (not via Gunicorn)
+    _bg_thread = threading.Thread(target=background_poll, daemon=True)
+    _bg_thread.start()
     app.run(debug=False, port=5050, host="0.0.0.0")
