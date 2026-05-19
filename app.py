@@ -756,8 +756,12 @@ def get_adaptive_interval():
     return POLL_INTERVAL
 
 def background_poll():
+    logger.info("🚀 Background poll thread started")
     while True:
-        fetch_data()
+        try:
+            fetch_data()
+        except Exception as e:
+            logger.error(f"❌ fetch_data crashed: {e}", exc_info=True)
         interval = get_adaptive_interval()
         time.sleep(interval)
 
@@ -992,8 +996,10 @@ def index():
     return render_template("index.html")
 
 # Start background thread on module import (works with both `python app.py` and Gunicorn)
+logger.info(f"📦 Module loaded — pid={os.getpid()}, starting background thread")
 _bg_thread = threading.Thread(target=background_poll, daemon=True)
 _bg_thread.start()
+logger.info(f"✅ Background thread launched — alive={_bg_thread.is_alive()}")
 
 if __name__ == "__main__":
     app.run(debug=False, port=5050, host="0.0.0.0")
