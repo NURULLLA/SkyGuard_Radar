@@ -835,6 +835,8 @@ def api_status():
             'reachable': fr24_ok or has_flight_data
         },
         'last_update': last_schedule_update,
+        'pid': os.getpid(),
+        'thread_alive': _bg_thread.is_alive(),
     })
 
 CREW_ROLE_NAMES = {
