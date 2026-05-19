@@ -992,6 +992,9 @@ def api_notam(iata):
 def index():
     return render_template("index.html")
 
+# Start background thread on module import (works with both `python app.py` and Gunicorn)
+_bg_thread = threading.Thread(target=background_poll, daemon=True)
+_bg_thread.start()
+
 if __name__ == "__main__":
-    threading.Thread(target=background_poll, daemon=True).start()
     app.run(debug=False, port=5050, host="0.0.0.0")
