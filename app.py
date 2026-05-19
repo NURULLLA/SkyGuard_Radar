@@ -29,19 +29,48 @@ logger = logging.getLogger(__name__)
 try:
     with open('config.json', 'r', encoding='utf-8') as f:
         config = json.load(f)
-except Exception as e:
-    logger.error(f"❌ Ошибка загрузки config.json: {e}"); exit(1)
+    logger.info("✅ config.json загружен")
+except Exception:
+    config = {}
+    logger.info("⚠️ config.json не найден — используем переменные окружения")
 
-AVIABIT_CREDENTIALS  = config["aviabit"]
+_av = config.get("aviabit", {})
+AVIABIT_CREDENTIALS = {
+    "username": os.environ.get("AVIABIT_USERNAME") or _av.get("username", ""),
+    "password": os.environ.get("AVIABIT_PASSWORD") or _av.get("password", ""),
+}
+
 TELEGRAM_CONFIG = {
     "bot_token": os.environ.get("TELEGRAM_BOT_TOKEN") or config.get("telegram", {}).get("bot_token"),
-    "chat_id":   os.environ.get("TELEGRAM_CHAT_ID")   or config.get("telegram", {}).get("chat_id")
+    "chat_id":   os.environ.get("TELEGRAM_CHAT_ID")   or config.get("telegram", {}).get("chat_id"),
 }
-AIRCRAFT_CONFIG         = config["aircraft"]
-AIRCRAFT_REGISTRATIONS  = list(AIRCRAFT_CONFIG.keys())
-AIRPORTS                = config["airports"]
-POLL_INTERVAL           = config.get("poll_interval", 30)
-MAX_TRACK_POINTS        = config.get("max_track_points", 100)
+
+_default_aircraft = {
+    "UK75057": {"name": "UK-75057", "color": "#00d4ff", "icao": "UK75057"},
+    "UK75058": {"name": "UK-75058", "color": "#ff6b35", "icao": "UK75058"},
+}
+_default_airports = {
+    "SHJ": {"name": "Sharjah",        "country": "UAE",         "lat": 25.3283, "lon": 55.5172},
+    "DXB": {"name": "Dubai",           "country": "UAE",         "lat": 25.2532, "lon": 55.3657},
+    "DWC": {"name": "Dubai Al Maktoum","country": "UAE",         "lat": 24.8962, "lon": 55.1612},
+    "TAS": {"name": "Tashkent",        "country": "Uzbekistan",  "lat": 41.2575, "lon": 69.2812},
+    "SKD": {"name": "Samarkand",       "country": "Uzbekistan",  "lat": 39.7005, "lon": 66.9839},
+    "BSZ": {"name": "Бишкек (Манас)",  "country": "Кыргызстан", "lat": 42.8474, "lon": 74.4776},
+    "KBL": {"name": "Kabul",           "country": "Afghanistan", "lat": 34.5658, "lon": 69.2123},
+    "IST": {"name": "Istanbul",        "country": "Turkey",      "lat": 41.2753, "lon": 28.7519},
+    "NBO": {"name": "Nairobi",         "country": "Kenya",       "lat": -1.3192, "lon": 36.9275},
+    "BOM": {"name": "Mumbai",          "country": "India",       "lat": 19.0896, "lon": 72.8656},
+    "ASM": {"name": "Asmara",          "country": "Eritrea",     "lat": 15.3311, "lon": 38.9103},
+}
+
+AIRCRAFT_CONFIG        = config.get("aircraft") or _default_aircraft
+AIRCRAFT_REGISTRATIONS = list(AIRCRAFT_CONFIG.keys())
+AIRPORTS               = config.get("airports") or _default_airports
+POLL_INTERVAL          = config.get("poll_interval", 30)
+MAX_TRACK_POINTS       = config.get("max_track_points", 100)
+
+if not AVIABIT_CREDENTIALS["username"]:
+    logger.error("❌ AVIABIT_USERNAME не задан"); exit(1)
 
 app = Flask(__name__)
 CORS(app)
