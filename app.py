@@ -91,8 +91,48 @@ def init_db():
                         reg TEXT PRIMARY KEY,
                         lat REAL NOT NULL, lon REAL NOT NULL,
                         ts  REAL NOT NULL, callsign TEXT)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS notified_delays (
+                        flight_id TEXT PRIMARY KEY, ts REAL NOT NULL)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS flight_status_log (
+                        reg TEXT PRIMARY KEY, status TEXT NOT NULL, ts REAL NOT NULL)''')
         conn.commit()
     logger.info("🗄 БД инициализирована")
+
+def db_load_notified_delays():
+    """Загружает уже отправленные уведомления о задержках из БД."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cur = conn.execute("SELECT flight_id FROM notified_delays")
+            return {row[0] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"DB load_notified_delays: {e}")
+        return set()
+
+def db_save_notified_delay(flight_id):
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("INSERT OR IGNORE INTO notified_delays (flight_id, ts) VALUES (?, ?)",
+                         (flight_id, time.time()))
+    except Exception as e:
+        logger.error(f"DB save_notified_delay: {e}")
+
+def db_load_flight_status():
+    """Загружает последний известный статус бортов из БД."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cur = conn.execute("SELECT reg, status FROM flight_status_log")
+            return {row[0]: row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"DB load_flight_status: {e}")
+        return {}
+
+def db_save_flight_status(reg, status):
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("INSERT OR REPLACE INTO flight_status_log (reg, status, ts) VALUES (?, ?, ?)",
+                         (reg, status, time.time()))
+    except Exception as e:
+        logger.error(f"DB save_flight_status: {e}")
 
 def add_alert(text):
     try:
@@ -128,6 +168,12 @@ def get_last_position(reg):
     return None
 
 init_db()
+
+# ─── CACHE ─── (загружаем персистентное состояние из БД) ──────────────────────
+notified_delays      = db_load_notified_delays()
+last_notified_status = db_load_flight_status()
+logger.info(f"📋 Загружено из БД: {len(notified_delays)} задержек, "
+            f"{len(last_notified_status)} статусов бортов")
 
 # ─── TELEGRAM ─────────────────────────────────────────────────────────────────
 def send_telegram(message):
@@ -439,12 +485,11 @@ flight_cache          = {}
 schedule_cache        = {r: {"current": None, "upcoming": []} for r in AIRCRAFT_REGISTRATIONS}
 track_history         = {r: [] for r in AIRCRAFT_REGISTRATIONS}
 last_schedule_update  = 0
-notified_delays       = set()
-last_notified_status  = {}
+# notified_delays и last_notified_status загружаются из БД выше при init_db()
 
 # ─── MAIN POLL ────────────────────────────────────────────────────────────────
 def fetch_data():
-    global flight_cache, schedule_cache, last_schedule_update, notified_delays, fr24_last_ok
+    global flight_cache, schedule_cache, last_schedule_update, fr24_last_ok
     now_ts = time.time()
 
     # 1. Расписание — раз в 10 минут
@@ -593,39 +638,43 @@ def fetch_data():
                 if delay > 15:
                     delay_minutes = int(delay)
                     fid = f"{reg}_{nf.get('flight')}_{nf.get('dateTakeoff')}"
-                    with data_lock:
-                        if fid not in notified_delays:
-                            # Плановая продолжительность рейса для сообщения о задержке
-                            d_dur = ""
-                            d_eta = ""
-                            try:
-                                t1n = datetime.fromisoformat(nf.get("dateLanding","").replace("Z","+00:00"))
-                                dm = int((t1n - tp).total_seconds() / 60)
-                                dh, dmin = divmod(dm, 60)
-                                d_dur = f"{dh}ч {dmin:02d}мин"
-                                d_eta = t1n.strftime("%H:%M UTC")
-                            except: pass
-                            dur_line_d = f"⏱  Длит. рейса: {d_dur}\n" if d_dur else ""
-                            eta_line_d = f"🏁  Прибытие:   {d_eta}\n" if d_eta else ""
-                            nf_orig = get_airport_info(nf.get("airPortTOCode") or "—")
-                            nf_dest = get_airport_info(nf.get("airPortLACode") or "—")
-                            send_telegram(
-                                f"⚠️ ЗАДЕРЖКА ВЫЛЕТА\n━━━━━━━━━━━━━━━━━━━━\n"
-                                f"✈️  Борт:       {AIRCRAFT_CONFIG[reg]['name']}\n"
-                                f"🎫  Рейс:       {nf.get('flight')}\n"
-                                f"🛫  Вылет:      {nf_orig}\n"
-                                f"🛬  Прибытие:   {nf_dest}\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"⏰  План вылета: {tp.strftime('%H:%M UTC')}\n"
-                                f"⏳  Опаздывает: {delay_minutes} мин\n"
-                                f"{dur_line_d}{eta_line_d}"
-                                f"━━━━━━━━━━━━━━━━━━━━")
+                    if fid not in notified_delays:
+                        # Плановая продолжительность рейса для сообщения о задержке
+                        d_dur = ""
+                        d_eta = ""
+                        try:
+                            t1n = datetime.fromisoformat(nf.get("dateLanding","").replace("Z","+00:00"))
+                            dm = int((t1n - tp).total_seconds() / 60)
+                            dh, dmin = divmod(dm, 60)
+                            d_dur = f"{dh}ч {dmin:02d}мин"
+                            d_eta = t1n.strftime("%H:%M UTC")
+                        except: pass
+                        dur_line_d = f"⏱  Длит. рейса: {d_dur}\n" if d_dur else ""
+                        eta_line_d = f"🏁  Прибытие:   {d_eta}\n" if d_eta else ""
+                        nf_orig = get_airport_info(nf.get("airPortTOCode") or "—")
+                        nf_dest = get_airport_info(nf.get("airPortLACode") or "—")
+                        send_telegram(
+                            f"⚠️ ЗАДЕРЖКА ВЫЛЕТА\n━━━━━━━━━━━━━━━━━━━━\n"
+                            f"✈️  Борт:       {AIRCRAFT_CONFIG[reg]['name']}\n"
+                            f"🎫  Рейс:       {nf.get('flight')}\n"
+                            f"🛫  Вылет:      {nf_orig}\n"
+                            f"🛬  Прибытие:   {nf_dest}\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"⏰  План вылета: {tp.strftime('%H:%M UTC')}\n"
+                            f"⏳  Опаздывает: {delay_minutes} мин\n"
+                            f"{dur_line_d}{eta_line_d}"
+                            f"━━━━━━━━━━━━━━━━━━━━")
+                        with data_lock:
                             notified_delays.add(fid)
+                        db_save_notified_delay(fid)
             except: pass
 
         with data_lock:
             prev_notified = last_notified_status.get(reg)
-        if position_type == "live" and prev_notified and prev_notified != status:
+        # Уведомляем при любом источнике данных (live FR24 или estimated Aviabit),
+        # но не при offline — чтобы не было ложных срабатываний при потере связи
+        can_notify = status in ("airborne", "ground") and position_type in ("live", "estimated")
+        if can_notify and prev_notified and prev_notified != status:
             name   = AIRCRAFT_CONFIG[reg]['name']
             now_dt = datetime.now(timezone.utc)
             title  = "✈️ ВЗЛЁТ БОРТА" if status == "airborne" else "🛬 ПОСАДКА БОРТА"
@@ -682,9 +731,11 @@ def fetch_data():
             send_telegram(msg)
             logger.info(f"🔔 ALERT: {title} {name} ({prev_notified} → {status})")
 
-        if status != "offline":
+        if status in ("airborne", "ground"):
             with data_lock:
-                last_notified_status[reg] = status
+                if last_notified_status.get(reg) != status:
+                    last_notified_status[reg] = status
+                    db_save_flight_status(reg, status)
 
         next_dep_ts = next_dep_flight = None
         if upcoming:
