@@ -1,28 +1,26 @@
 @echo off
-title Skyguard Flight Tracker
+title Skyguard Radar - Timetable
 color 0B
 echo.
-echo  ================================================
-echo    SKYGUARD FLIGHT TRACKER - UK-75057 / UK-75058
-echo  ================================================
+echo  ==============================================
+echo    SKYGUARD RADAR - Flight Timetable
+echo  ==============================================
 echo.
 
-:: Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python не найден! Установите Python 3.8+
+    echo [ERROR] Python not found. Install Python 3.9+
     pause
     exit /b 1
 )
 
-:: Install dependencies
-echo [1/2] Установка зависимостей...
+echo [1/2] Installing dependencies...
 pip install -r requirements.txt -q
 
-echo [2/2] Запуск сервера...
+echo [2/2] Starting server...
 echo.
-echo  Откройте браузер: http://localhost:5050
-echo  Нажмите Ctrl+C для остановки
+echo  Open http://localhost:5050
+echo  Ctrl+C to stop
 echo.
 python app.py
 pause

@@ -1,933 +1,394 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Skyguard Ops Control</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --bg:         #020617;
-      --bg-card:    rgba(15,23,42,0.85);
-      --bg-hover:   rgba(15,23,42,0.95);
-      --border:     rgba(0,180,255,0.1);
-      --accent:     #00d4ff;
-      --accent2:    #ff6b35;
-      --text:       #f8fafc;
-      --muted:      #64748b;
-      --glass:      blur(12px);
-      --r:          14px;
-      --green:      #22c55e;
-      --red:        #ef4444;
-      --yellow:     #f59e0b;
-    }
-    body.light {
-      --bg:         #eef2f7;
-      --bg-card:    rgba(255,255,255,0.92);
-      --bg-hover:   rgba(255,255,255,1);
-      --border:     rgba(0,120,200,0.15);
-      --accent:     #0070cc;
-      --text:       #1a202c;
-      --muted:      #718096;
-    }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Skyguard Radar</title>
+<meta name="theme-color" content="#0b1017">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Skyguard">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" href="/static/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+  :root{
+    --bg:#0b1017; --panel:#131a24; --panel-2:#182231; --line:#243044;
+    --text:#e6edf6; --muted:#8b9bb4; --dim:#5f6f88;
+    --accent:#3ea6ff; --ok:#2ecc8f; --warn:#f5a623; --bad:#ff5f57; --air:#a97bff;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       -webkit-text-size-adjust:100%;
+       padding-bottom:env(safe-area-inset-bottom)}
+  header{padding-top:env(safe-area-inset-top)}
 
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); height:100vh; overflow:hidden; transition:background .3s,color .3s; }
+  /* Render's free tier sleeps after 15 min — the first open takes up to a
+     minute, so say so instead of showing an empty page. */
+  .boot{position:fixed;inset:0;z-index:100;background:var(--bg);
+        display:flex;align-items:center;justify-content:center;padding:28px;
+        transition:opacity .35s ease}
+  .boot.gone{opacity:0;pointer-events:none}
+  .bootcard{max-width:330px;width:100%;text-align:center}
+  .bootplane{font-size:44px;animation:float 2.6s ease-in-out infinite}
+  @keyframes float{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-9px) rotate(-2deg)}}
+  .boottitle{font-size:17px;font-weight:650;margin:14px 0 6px;letter-spacing:.02em}
+  .bootmsg{font-size:13.5px;color:var(--muted);min-height:20px}
+  .bootbar{height:3px;border-radius:2px;background:var(--panel-2);overflow:hidden;margin:20px 0 16px}
+  .bootbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--accent);
+             transition:width .9s linear}
+  .boothint{font-size:11.5px;color:var(--dim);line-height:1.6}
+  .bootretry{margin-top:18px}
+  a{color:inherit}
 
-    /* ── TOP BAR ─────────────────────────────────────────────────── */
-    #top-bar {
-      height: 54px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 0 20px;
-      background: rgba(2,6,23,0.97);
-      border-bottom: 1px solid var(--border);
-      backdrop-filter: var(--glass);
-      flex-shrink: 0;
-      z-index: 100;
-    }
-    body.light #top-bar { background: rgba(238,242,247,0.97); }
+  header{position:sticky;top:0;z-index:20;background:rgba(11,16,23,.94);
+         backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .bar{max-width:1280px;margin:0 auto;padding:14px 20px;
+       display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{font-size:16px;font-weight:650;letter-spacing:.02em;display:flex;gap:9px;align-items:center}
+  .brand span{color:var(--accent)}
+  .clock{margin-left:auto;font-family:var(--mono);font-size:18px;letter-spacing:.04em}
+  .clock small{color:var(--dim);font-size:11px;margin-left:6px;letter-spacing:.08em}
+  .sync{font-size:12px;color:var(--dim)}
+  .btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+       border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn[disabled]{opacity:.5;cursor:default}
 
-    .logo { display:flex; align-items:center; gap:10px; flex-shrink:0; }
-    .logo-icon { font-size:18px; color:var(--accent); filter:drop-shadow(0 0 8px var(--accent)); }
-    .logo-text { font-family:'Orbitron',sans-serif; font-size:13px; letter-spacing:2px; color:var(--text); font-weight:700; }
+  .tabs{max-width:1280px;margin:0 auto;padding:0 20px 12px;display:flex;gap:8px;
+        flex-wrap:wrap;align-items:stretch}
+  .tab{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+       padding:11px 16px;cursor:pointer;min-width:150px;text-align:left;
+       transition:border-color .15s,background .15s}
+  .tab:hover{border-color:#33455f}
+  .tab.on{border-color:var(--accent);background:var(--panel-2)}
+  .tab b{display:block;font-family:var(--mono);font-size:15px;letter-spacing:.02em}
+  .tab i{display:block;font-style:normal;font-size:11.5px;color:var(--muted);margin-top:3px}
+  .tab.ghost b{color:var(--muted)}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;
+       vertical-align:middle}
+  .dot.air{background:var(--air);box-shadow:0 0 0 3px rgba(169,123,255,.18)}
+  .dot.idle{background:var(--dim)}
 
-    .utc-clock { font-family:'Roboto Mono',monospace; font-size:11px; color:var(--accent);
-      background:rgba(0,212,255,0.05); padding:4px 10px; border-radius:6px; border:1px solid rgba(0,212,255,0.12); flex-shrink:0; }
+  main{max-width:1280px;margin:0 auto;padding:20px}
 
-    .sys-status { display:flex; gap:8px; flex-shrink:0; }
-    .status-pill { font-size:9px; font-weight:700; padding:3px 10px; border-radius:20px; text-transform:uppercase; letter-spacing:1px; display:flex; align-items:center; gap:5px; }
-    .pill-dot { width:5px; height:5px; border-radius:50%; }
-    .pill-ok  { background:rgba(34,197,94,0.12);  color:#22c55e; border:1px solid rgba(34,197,94,0.25); }
-    .pill-err { background:rgba(239,68,68,0.12);  color:#ef4444; border:1px solid rgba(239,68,68,0.25); }
-    .dot-ok   { background:#22c55e; box-shadow:0 0 5px #22c55e; }
-    .dot-err  { background:#ef4444; box-shadow:0 0 5px #ef4444; }
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+         gap:12px;margin-bottom:22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card u{display:block;text-decoration:none;font-size:11px;letter-spacing:.09em;
+          text-transform:uppercase;color:var(--dim)}
+  .card b{display:block;font-size:21px;font-weight:600;margin-top:7px;font-family:var(--mono)}
+  .card i{font-style:normal;font-size:12px;color:var(--muted)}
 
-    .filters { display:flex; gap:4px; margin-left:auto; }
-    .f-btn { font-size:10px; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; transition:all .2s; text-transform:uppercase; letter-spacing:.5px; }
-    .f-btn:hover { border-color:var(--accent); color:var(--accent); }
-    .f-btn.active { background:rgba(0,212,255,0.1); border-color:var(--accent); color:var(--accent); }
+  .daybar{display:flex;align-items:baseline;gap:12px;margin:26px 0 10px;
+          padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .daybar h3{margin:0;font-size:14px;font-weight:600;letter-spacing:.02em}
+  .daybar span{font-size:12px;color:var(--dim)}
+  .daybar em{margin-left:auto;font-style:normal;font-size:11px;color:var(--dim)}
 
-    .theme-btn { font-size:15px; cursor:pointer; padding:5px 8px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--muted); transition:all .2s; flex-shrink:0; }
-    .theme-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .tablewrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{width:100%;border-collapse:collapse;min-width:560px}
+  thead th{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
+           text-align:left;padding:0 12px 8px;font-weight:600;white-space:nowrap}
+  tbody tr{border-top:1px solid var(--line)}
+  tbody tr:hover{background:rgba(62,166,255,.045)}
+  td{padding:11px 12px;vertical-align:top}
+  .fno{font-family:var(--mono);font-size:14px;font-weight:600;white-space:nowrap}
+  .route{white-space:nowrap}
+  .route b{font-family:var(--mono);font-size:13.5px;font-weight:600}
+  .route .arrow{color:var(--dim);margin:0 7px}
+  .route i{display:block;font-style:normal;font-size:11.5px;color:var(--muted);margin-top:2px}
+  .tcell{font-family:var(--mono);white-space:nowrap;font-size:14px}
+  .tcell .plan{color:var(--muted)}
+  .tcell .plan.struck{text-decoration:line-through;text-decoration-color:var(--dim);
+                      font-size:12.5px;display:block}
+  .tcell .real{display:block;font-weight:600}
+  .chip{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;
+        padding:2px 6px;border-radius:5px;margin-top:3px}
+  .chip.ok{background:rgba(46,204,143,.14);color:var(--ok)}
+  .chip.warn{background:rgba(245,166,35,.15);color:var(--warn)}
+  .chip.bad{background:rgba(255,95,87,.15);color:var(--bad)}
+  .chip.early{background:rgba(62,166,255,.14);color:var(--accent)}
 
-    /* ── LAYOUT ──────────────────────────────────────────────────── */
-    #app { display:flex; flex-direction:column; height:100vh; }
-    #content { display:flex; flex:1; overflow:hidden; }
-    #flights-area { flex:1; overflow-y:auto; padding:16px; }
-    #ac-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  .state{font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+         white-space:nowrap}
+  .state.completed{color:var(--dim)}
+  .state.airborne{color:var(--air)}
+  .state.due{color:var(--warn)}
+  .state.scheduled{color:var(--muted)}
 
-    #alerts-panel { display: none; }
-    .weather-row   { display: none; }
-    .btn-metar     { display: none; }
-    .btn-notam     { display: none; }
-    .alerts-header { padding:14px 16px 10px; font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:2px; flex-shrink:0; }
-    #alerts-list { flex:1; overflow-y:auto; padding:0 12px 12px; display:flex; flex-direction:column; gap:6px; }
-    .alert-item { background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:8px; font-size:11px; border-left:2px solid rgba(0,212,255,0.3); }
-    .alert-time { opacity:.4; font-size:9px; margin-top:2px; }
+  .crew{background:none;border:0;color:var(--accent);cursor:pointer;font-size:12.5px;padding:0}
+  .crew:hover{text-decoration:underline}
+  .crew.none{color:var(--dim);cursor:default;text-decoration:none}
+  .crewlist{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.7;display:none}
+  .crewlist.open{display:block}
+  .crewlist span{color:var(--dim);font-family:var(--mono);margin-right:7px}
 
-    /* ── AIRCRAFT CARD ───────────────────────────────────────────── */
-    .ac-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-      padding: 12px 14px;
-      transition: all .2s;
-      backdrop-filter: var(--glass);
-    }
-    .ac-card:hover { border-color:rgba(0,212,255,0.25); background:var(--bg-hover); }
+  .empty{padding:50px 20px;text-align:center;color:var(--dim)}
+  .err{background:rgba(255,95,87,.1);border:1px solid rgba(255,95,87,.35);
+       border-radius:10px;padding:12px 16px;margin-bottom:18px;color:#ffb3ae;font-size:13px}
+  .past td{opacity:.55}
 
-    .ac-header { display:flex; align-items:center; gap:7px; margin-bottom:10px; flex-wrap:wrap; }
-    .ac-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-    .ac-reg { font-family:'Orbitron',sans-serif; font-size:14px; font-weight:700; }
-    .ac-callsign { font-size:11px; color:var(--muted); }
-    .ac-badges { display:flex; gap:4px; margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
-    .badge { font-size:9px; padding:2px 7px; border-radius:4px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; }
-    .badge-air  { background:rgba(0,212,255,0.1);  color:var(--accent);  }
-    .badge-gnd  { background:rgba(255,107,53,0.1); color:var(--accent2); }
-    .badge-off  { background:rgba(100,116,139,0.1);color:#94a3b8;        }
-    .badge-del  { background:rgba(239,68,68,0.15); color:var(--red); border:1px solid rgba(239,68,68,0.3); }
-    .badge-est  { background:rgba(245,158,11,0.12);color:var(--yellow); border:1px solid rgba(245,158,11,0.25); }
-    .badge-lst  { background:rgba(100,116,139,0.1);color:#94a3b8; border:1px solid rgba(100,116,139,0.2); }
-
-    /* ── ROUTE ───────────────────────────────────────────────────── */
-    .route-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-    .route-node { flex:1; min-width:0; }
-    .node-iata { font-family:'Orbitron',sans-serif; font-size:17px; font-weight:800; line-height:1; margin-bottom:2px; }
-    .node-city { font-size:9px; color:var(--accent); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .node-label { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:1px; }
-    .route-mid { flex:1; display:flex; align-items:center; padding:0 4px; }
-    .route-line { width:100%; height:1px; background:rgba(0,212,255,0.15); position:relative; }
-    .route-line::after { content:'✈'; position:absolute; top:-9px; left:50%; transform:translateX(-50%); font-size:12px; color:var(--accent); opacity:.7; }
-
-    /* ── WEATHER BLOCK ───────────────────────────────────────────── */
-    .weather-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
-    .wx-card { padding:8px 10px; background:rgba(255,255,255,0.025); border-radius:8px; border:1px solid rgba(255,255,255,0.04); }
-    .wx-airport { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
-    .wx-main { display:flex; align-items:baseline; gap:5px; }
-    .wx-temp { font-size:15px; font-weight:700; color:var(--text); }
-    .wx-cat { font-size:9px; font-weight:700; padding:2px 5px; border-radius:4px; }
-    .cat-VFR  { background:rgba(34,197,94,0.15);  color:#22c55e; }
-    .cat-MVFR { background:rgba(59,130,246,0.15); color:#60a5fa; }
-    .cat-IFR  { background:rgba(239,68,68,0.15);  color:#f87171; }
-    .cat-LIFR { background:rgba(168,85,247,0.15); color:#c084fc; }
-    .wx-wind { font-size:10px; color:var(--muted); margin-top:2px; }
-    .wx-btn { font-size:9px; color:var(--accent); cursor:pointer; background:none; border:none; padding:0; margin-top:3px; opacity:.7; }
-    .wx-btn:hover { opacity:1; }
-
-    /* ── PROGRESS ────────────────────────────────────────────────── */
-    .progress-section { margin-bottom:10px; }
-    .progress-meta { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-bottom:4px; }
-    .progress-meta span { color:var(--accent); font-weight:600; }
-    .progress-track { height:3px; background:rgba(255,255,255,0.04); border-radius:4px; }
-    .progress-bar { height:100%; background:var(--accent); border-radius:4px; transition:width 1s ease; box-shadow:0 0 8px rgba(0,212,255,0.35); }
-
-    /* ── DEPARTURE COUNTDOWN ─────────────────────────────────────── */
-    .dep-panel { margin-bottom:10px; border-radius:8px; padding:8px 12px; border:1px solid rgba(245,158,11,.25); background:rgba(245,158,11,.05); display:flex; align-items:center; justify-content:space-between; }
-    .dep-panel.urgent { border-color:rgba(239,68,68,.5); background:rgba(239,68,68,.07); animation:pulse 1s ease infinite; }
-    .dep-panel.departed { border-color:rgba(34,197,94,.4); background:rgba(34,197,94,.06); }
-    @keyframes pulse { 0%,100%{box-shadow:none} 50%{box-shadow:0 0 12px 3px rgba(239,68,68,.25)} }
-    .dep-label { font-size:9px; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
-    .dep-flight { font-size:10px; color:var(--muted); margin-top:1px; }
-    .dep-timer { font-family:'Roboto Mono',monospace; font-size:20px; font-weight:700; letter-spacing:1px; }
-
-    /* ── SCHEDULE TABLE ──────────────────────────────────────────── */
-    .schedule-wrap { background:rgba(0,0,0,.1); border-radius:8px; border:1px solid rgba(255,255,255,.03); overflow:hidden; margin-bottom:10px; }
-    .sch-table { width:100%; border-collapse:collapse; font-size:11px; }
-    .sch-table th { text-align:left; padding:7px 10px; color:var(--muted); font-size:9px; border-bottom:1px solid rgba(255,255,255,.04); }
-    .sch-table td { padding:7px 10px; border-bottom:1px solid rgba(255,255,255,.02); vertical-align:middle; }
-    .sch-table tr:last-child td { border-bottom:none; }
-    .sch-current { background:rgba(0,212,255,.03); font-weight:600; color:var(--accent); }
-    .sch-iata { font-family:'Orbitron',sans-serif; font-size:10px; font-weight:700; }
-    .sch-city { font-size:9px; color:var(--muted); display:block; margin-top:1px; }
-
-    /* ── ACTION BUTTONS ──────────────────────────────────────────── */
-    .card-actions { display:flex; gap:6px; }
-    .action-btn {
-      flex:1;
-      padding: 7px 6px;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.02);
-      color: var(--muted);
-      font-size: 10px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all .2s;
-      text-align: center;
-      white-space: nowrap;
-    }
-    .action-btn:hover { border-color:var(--accent); color:var(--accent); background:rgba(0,212,255,0.05); }
-    .action-btn.btn-crew    { border-color:rgba(0,212,255,.2);  color:var(--accent); }
-    .action-btn.btn-history { border-color:rgba(245,158,11,.2); color:var(--yellow); }
-    .action-btn.btn-metar   { border-color:rgba(34,197,94,.2);  color:var(--green);  }
-    .action-btn.btn-notam   { border-color:rgba(239,68,68,.2);  color:var(--red);    }
-    .action-btn:hover.btn-crew    { background:rgba(0,212,255,.07);  }
-    .action-btn:hover.btn-history { background:rgba(245,158,11,.07); }
-    .action-btn:hover.btn-metar   { background:rgba(34,197,94,.07);  }
-    .action-btn:hover.btn-notam   { background:rgba(239,68,68,.07);  }
-
-    /* ── MODAL ───────────────────────────────────────────────────── */
-    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:999; display:none; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
-    .modal-overlay.open { display:flex; }
-    .modal-box { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r); width:min(680px,95vw); max-height:85vh; display:flex; flex-direction:column; backdrop-filter:var(--glass); }
-    .modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); flex-shrink:0; }
-    .modal-title { font-family:'Orbitron',sans-serif; font-size:13px; letter-spacing:1px; }
-    .modal-close { font-size:20px; cursor:pointer; color:var(--muted); background:none; border:none; line-height:1; padding:4px; border-radius:6px; }
-    .modal-close:hover { color:var(--text); background:rgba(255,255,255,.05); }
-    .modal-body { padding:20px; overflow-y:auto; flex:1; }
-    .modal-sub { font-size:11px; color:var(--muted); margin-top:3px; }
-
-    /* Таблица в модалке */
-    .modal-table { width:100%; border-collapse:collapse; font-size:12px; }
-    .modal-table th { text-align:left; padding:10px 12px; color:var(--muted); font-size:10px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg-card); }
-    .modal-table td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.03); }
-    .modal-table tr:last-child td { border-bottom:none; }
-    .modal-table tr:hover td { background:rgba(255,255,255,.02); }
-    .modal-empty { text-align:center; padding:40px; color:var(--muted); font-size:13px; }
-    .modal-loading { text-align:center; padding:40px; color:var(--muted); }
-    .spin { display:inline-block; animation:spin .8s linear infinite; font-size:20px; }
-    @keyframes spin { to{transform:rotate(360deg)} }
-
-    /* METAR raw */
-    .metar-raw { font-family:'Roboto Mono',monospace; font-size:11px; background:rgba(0,0,0,.25); padding:10px 14px; border-radius:8px; border:1px solid var(--border); word-break:break-all; line-height:1.6; margin-bottom:12px; }
-    .metar-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; }
-    .metar-item { background:rgba(255,255,255,.02); border-radius:8px; padding:10px; border:1px solid rgba(255,255,255,.04); }
-    .metar-lbl { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
-    .metar-val { font-size:14px; font-weight:700; }
-
-    /* NOTAM list */
-    .notam-item { background:rgba(239,68,68,.04); border-radius:8px; padding:12px; border:1px solid rgba(239,68,68,.15); margin-bottom:8px; }
-    .notam-id { font-size:9px; color:var(--red); font-weight:700; text-transform:uppercase; margin-bottom:4px; }
-    .notam-text { font-size:11px; line-height:1.5; font-family:'Roboto Mono',monospace; white-space:pre-wrap; word-break:break-all; }
-    .notam-dates { font-size:9px; color:var(--muted); margin-top:6px; }
-
-    /* Crew roles */
-    .crew-role { font-size:9px; font-weight:700; padding:2px 7px; border-radius:4px; background:rgba(0,212,255,.1); color:var(--accent); display:inline-block; }
-
-    /* History status */
-    .hist-status { font-size:9px; padding:2px 7px; border-radius:4px; font-weight:700; }
-    .hist-done { background:rgba(34,197,94,.1); color:var(--green); }
-    .hist-canc { background:rgba(239,68,68,.1); color:var(--red); }
-    .hist-prog { background:rgba(0,212,255,.1); color:var(--accent); }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width:3px; }
-    ::-webkit-scrollbar-thumb { background:rgba(0,180,255,.12); border-radius:4px; }
-
-    /* ── MOBILE ──────────────────────────────────────────────────── */
-    @media (max-width: 900px) {
-      #ac-grid { grid-template-columns:1fr; }
-      #alerts-panel { display:none; }
-      #alerts-panel.mobile-open { display:flex; position:fixed; right:0; top:54px; bottom:0; z-index:200; background:var(--bg-card); border-left:1px solid var(--border); }
-      .mobile-alerts-btn { display:flex !important; }
-    }
-    @media (max-width: 600px) {
-      .card-actions { gap:6px; }
-      .action-btn { min-width:70px; font-size:10px; padding:6px 6px; }
-      #top-bar { gap:8px; padding:0 12px; }
-      .filters { gap:3px; }
-      .f-btn { padding:4px 8px; font-size:9px; }
-    }
-    .mobile-alerts-btn { display:none; position:fixed; bottom:48px; right:16px; z-index:300; background:var(--accent); color:#000; border:none; border-radius:50%; width:44px; height:44px; font-size:18px; cursor:pointer; box-shadow:0 4px 16px rgba(0,212,255,.4); }
-
-    /* ── BOTTOM STATUS BAR ───────────────────────────────────── */
-    #bottom-bar {
-      height: 36px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 0 20px;
-      background: rgba(2,6,23,0.97);
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
-      font-size: 10px;
-      color: var(--muted);
-    }
-    body.light #bottom-bar { background: rgba(238,242,247,0.97); }
-    #bottom-bar .sys-status { display:flex; gap:8px; }
-    #bottom-bar .upd { margin-left:auto; font-family:'Roboto Mono',monospace; font-size:10px; }
-  </style>
+  @media(max-width:720px){
+    .hide-sm{display:none !important}
+    thead{display:none}          /* columns read fine without labels on a phone */
+    table{min-width:0}
+    td,thead th{padding:9px 7px}
+    .fno,.route b,.tcell{font-size:12.5px}
+    .state{font-size:10px}
+    .cards{grid-template-columns:1fr 1fr;gap:9px}
+    .card{padding:11px 12px}
+    .card b{font-size:18px}
+    .bar{padding:12px 14px}
+    main,.tabs{padding-left:14px;padding-right:14px}
+    .tab{min-width:0;flex:1 1 46%;padding:9px 12px}
+    .clock{font-size:16px}
+    .btn{padding:9px 14px}              /* comfortable tap target */
+  }
+</style>
 </head>
 <body>
 
-<div id="app">
-  <!-- TOP BAR -->
-  <div id="top-bar">
-    <div class="logo">
-      <div class="logo-icon">▲</div>
-      <div class="logo-text">SKYGUARD</div>
-    </div>
-    <div class="utc-clock" id="utc-clock">00:00:00 UTC</div>
-
-    <div class="filters">
-      <button class="f-btn active" onclick="setFilter('all')">Все</button>
-      <button class="f-btn" onclick="setFilter('airborne')">В полёте</button>
-      <button class="f-btn" onclick="setFilter('ground')">На земле</button>
-      <button class="f-btn" onclick="setFilter('offline')">Офлайн</button>
-    </div>
-
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Сменить тему">☀</button>
-  </div>
-
-  <!-- CONTENT -->
-  <div id="content">
-    <div id="flights-area">
-      <div id="ac-grid"><div style="padding:40px;text-align:center;color:var(--muted)">Загрузка...</div></div>
-    </div>
-    <div id="alerts-panel">
-      <div class="alerts-header">Уведомления</div>
-      <div id="alerts-list"></div>
-    </div>
-  </div>
-
-  <!-- BOTTOM STATUS BAR -->
-  <div id="bottom-bar">
-    <div class="sys-status" id="sys-status">
-      <div class="status-pill pill-ok"><div class="pill-dot dot-ok"></div>Aviabit</div>
-      <div class="status-pill pill-ok"><div class="pill-dot dot-ok"></div>FR24</div>
-    </div>
-    <span class="upd" id="last-update">Синхронизация...</span>
+<div class="boot" id="boot">
+  <div class="bootcard">
+    <div class="bootplane">✈️</div>
+    <div class="boottitle">Skyguard Radar</div>
+    <div class="bootmsg" id="bootmsg">Подключение…</div>
+    <div class="bootbar"><i id="bootbar"></i></div>
+    <div class="boothint">Сервер засыпает после 15 минут простоя.<br>
+      Первый запуск занимает до минуты.</div>
+    <div class="bootretry"><button class="btn" id="bootbtn" hidden onclick="boot()">Попробовать снова</button></div>
   </div>
 </div>
 
-<button class="mobile-alerts-btn" onclick="document.getElementById('alerts-panel').classList.toggle('mobile-open')">🔔</button>
-
-<!-- MODAL: CREW -->
-<div class="modal-overlay" id="modal-crew" onclick="if(event.target===this)closeModal('crew')">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title" id="crew-title">Экипаж рейса</div>
-        <div class="modal-sub" id="crew-sub"></div>
-      </div>
-      <button class="modal-close" onclick="closeModal('crew')">×</button>
-    </div>
-    <div class="modal-body" id="crew-body"><div class="modal-loading"><div class="spin">⟳</div></div></div>
+<header>
+  <div class="bar">
+    <div class="brand">✈️ Skyguard <span>Radar</span></div>
+    <div class="clock" id="clock">--:--:--<small>UTC</small></div>
+    <button class="btn" id="refresh" onclick="refresh()">Обновить</button>
   </div>
-</div>
+  <div class="tabs" id="tabs"></div>
+</header>
 
-<!-- MODAL: HISTORY -->
-<div class="modal-overlay" id="modal-history" onclick="if(event.target===this)closeModal('history')">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title" id="history-title">История полётов</div>
-        <div class="modal-sub" id="history-sub">Последние 30 дней</div>
-      </div>
-      <button class="modal-close" onclick="closeModal('history')">×</button>
-    </div>
-    <div class="modal-body" id="history-body"><div class="modal-loading"><div class="spin">⟳</div></div></div>
-  </div>
-</div>
-
-<!-- MODAL: METAR -->
-<div class="modal-overlay" id="modal-metar" onclick="if(event.target===this)closeModal('metar')">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title" id="metar-title">METAR</div>
-        <div class="modal-sub" id="metar-sub"></div>
-      </div>
-      <button class="modal-close" onclick="closeModal('metar')">×</button>
-    </div>
-    <div class="modal-body" id="metar-body"><div class="modal-loading"><div class="spin">⟳</div></div></div>
-  </div>
-</div>
-
-<!-- MODAL: NOTAM -->
-<div class="modal-overlay" id="modal-notam" onclick="if(event.target===this)closeModal('notam')">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>
-        <div class="modal-title" id="notam-title">NOTAM</div>
-        <div class="modal-sub" id="notam-sub"></div>
-      </div>
-      <button class="modal-close" onclick="closeModal('notam')">×</button>
-    </div>
-    <div class="modal-body" id="notam-body"><div class="modal-loading"><div class="spin">⟳</div></div></div>
-  </div>
-</div>
+<main>
+  <div id="err"></div>
+  <div id="body"><div class="empty">Загрузка расписания…</div></div>
+  <div class="sync" id="sync" style="margin-top:24px"></div>
+</main>
 
 <script>
-  /* ── STATE ─────────────────────────────────────────────────── */
-  let dataCache = [], activeFilter = 'all', lightTheme = false;
+const S = { tails: [], active: null, updated: 0 };
 
-  /* ── THEME ─────────────────────────────────────────────────── */
-  function toggleTheme() {
-    lightTheme = !lightTheme;
-    document.body.classList.toggle('light', lightTheme);
-    document.getElementById('theme-btn').textContent = lightTheme ? '🌙' : '☀';
-  }
+const pad = n => String(n).padStart(2, '0');
+const hhmm = iso => { if (!iso) return null; const d = new Date(iso);
+                      return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); };
+const dur = m => m == null ? '—' : `${Math.floor(m / 60)}ч ${pad(m % 60)}м`;
 
-  /* ── FILTER ────────────────────────────────────────────────── */
-  function setFilter(f) {
-    activeFilter = f;
-    document.querySelectorAll('.f-btn').forEach(b => b.classList.toggle('active', b.textContent.trim() === {
-      all:'Все', airborne:'В полёте', ground:'На земле', offline:'Офлайн'
-    }[f]));
-    render(dataCache);
-  }
+function clock() {
+  const d = new Date();
+  document.getElementById('clock').innerHTML =
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}<small>UTC</small>`;
+}
 
-  /* ── CLOCK ─────────────────────────────────────────────────── */
-  function updateClock() {
-    document.getElementById('utc-clock').innerText = new Date().toISOString().substr(11,8) + ' UTC';
-  }
+function dayLabel(key) {
+  if (key === '—') return 'Без даты';
+  const d = new Date(key + 'T00:00:00Z');
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  const names = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+  const months = ['января','февраля','марта','апреля','мая','июня',
+                  'июля','августа','сентября','октября','ноября','декабря'];
+  let label = `${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
+  if (key === today) label += ' — сегодня';
+  else if (key === tomorrow) label += ' — завтра';
+  return `${label} · ${names[d.getUTCDay()]}`;
+}
 
-  /* ── WIND DIRECTION ────────────────────────────────────────── */
-  function windDir(deg) {
-    if (deg == null) return '';
-    return ['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'][Math.round(deg / 45) % 8];
-  }
+function delayChip(mins) {
+  if (mins == null) return '';
+  if (mins <= -5) return `<span class="chip early">${mins}м</span>`;
+  if (mins <= 15) return `<span class="chip ok">${mins >= 0 ? '+' : ''}${mins}м</span>`;
+  if (mins <= 60) return `<span class="chip warn">+${mins}м</span>`;
+  return `<span class="chip bad">+${mins}м</span>`;
+}
 
-  /* ── METAR CATEGORY CSS ────────────────────────────────────── */
-  function catClass(cat) {
-    return { VFR:'cat-VFR', MVFR:'cat-MVFR', IFR:'cat-IFR', LIFR:'cat-LIFR' }[cat] || '';
-  }
-
-  /* ── RENDER WEATHER CARD ───────────────────────────────────── */
-  function renderWx(iata, metar, temp, btnFn) {
-    const t    = (metar && metar.temp != null) ? Math.round(metar.temp) : temp;
-    const cat  = metar ? metar.category : '';
-    const ws   = metar ? metar.wind_speed : null;
-    const wdir = metar ? metar.wind_dir : null;
-    const windTxt = ws != null ? `${windDir(wdir)} ${ws} уз` : '';
-    const catHtml = cat ? `<span class="wx-cat ${catClass(cat)}">${cat}</span>` : '';
-    const gust = (metar && metar.wind_gust) ? ` порыв ${metar.wind_gust}` : '';
-    return `
-      <div class="wx-card">
-        <div class="wx-airport">Погода ${iata}</div>
-        <div class="wx-main">
-          <span class="wx-temp">${t != null ? t + '°C' : '---'}</span>
-          ${catHtml}
-        </div>
-        ${windTxt ? `<div class="wx-wind">↗ ${windTxt}${gust}</div>` : ''}
-        <button class="wx-btn" onclick="${btnFn}">Подробнее (METAR)</button>
-      </div>`;
-  }
-
-  /* ── RENDER ALL CARDS ──────────────────────────────────────── */
-  function render(flights) {
-    const filtered = flights.filter(f => {
-      if (activeFilter === 'all') return true;
-      return f.status === activeFilter;
-    });
-
-    if (!filtered.length) {
-      document.getElementById('ac-grid').innerHTML =
-        `<div style="padding:60px;text-align:center;color:var(--muted);grid-column:1/-1">Нет бортов для отображения</div>`;
-      return;
-    }
-
-    document.getElementById('ac-grid').innerHTML = filtered.map(f => buildCard(f)).join('');
-  }
-
-  function buildCard(f) {
-    const isAir = f.status === 'airborne';
-    const isOff = f.status === 'offline';
-
-    /* Хелпер: город из строки вида "Dubai, UAE (DXB)" — объявлен первым */
-    const AIRPORT_CITIES = {
-      DAC:'Дакка',EBB:'Энтеббе',NBO:'Найроби',ADD:'Аддис-Абеба',
-      CMB:'Коломбо',BOM:'Мумбаи',DEL:'Дели',CCU:'Калькутта',MAA:'Ченнаи',
-      HYD:'Хайдарабад',BLR:'Бангалор',AMD:'Ахмедабад',COK:'Кочи',
-      KHI:'Карачи',LHE:'Лахор',ISB:'Исламабад',PEW:'Пешавар',
-      KBL:'Кабул',DXB:'Дубай',DWC:'Дубай (АМС)',AUH:'Абу-Даби',
-      SHJ:'Шарджа',RKT:'Рас-эль-Хайма',FJR:'Фуджейра',
-      MCT:'Маскат',BAH:'Манама',DOH:'Доха',KWI:'Кувейт',
-      RUH:'Эр-Рияд',JED:'Джидда',DMM:'Даммам',ADE:'Аден',
-      TAS:'Ташкент',SKD:'Самарканд',BHK:'Бухара',FEG:'Фергана',
-      NVI:'Навои',UGC:'Ургенч',ALA:'Алматы',TSE:'Астана',
-      OSS:'Ош',FRU:'Бишкек',DYU:'Душанбе',ASB:'Ашхабад',
-      SVO:'Москва (SVO)',DME:'Москва (DME)',VKO:'Москва (VNK)',
-      LED:'Санкт-Петербург',SVX:'Екатеринбург',OVB:'Новосибирск',
-      KJA:'Красноярск',IKT:'Иркутск',UUS:'Южно-Сахалинск',
-      GYD:'Баку',EVN:'Ереван',TBS:'Тбилиси',LWN:'Гюмри',
-      IST:'Стамбул',SAW:'Стамбул (Сабиха)',ESB:'Анкара',
-      FCO:'Рим',MXP:'Милан',VCE:'Венеция',NAP:'Неаполь',
-      CDG:'Париж',LHR:'Лондон',AMS:'Амстердам',FRA:'Франкфурт',
-      MUC:'Мюнхен',VIE:'Вена',ZRH:'Цюрих',BRU:'Брюссель',
-      CPH:'Копенгаген',ARN:'Стокгольм',HEL:'Хельсинки',
-      WAW:'Варшава',PRG:'Прага',BUD:'Будапешт',OTP:'Бухарест',
-      KIV:'Кишинёв',RIX:'Рига',TLL:'Таллин',VNO:'Вильнюс',
-      SIN:'Сингапур',KUL:'Куала-Лумпур',BKK:'Бангкок',
-      HKG:'Гонконг',ICN:'Сеул',NRT:'Токио',PEK:'Пекин',PVG:'Шанхай',
-      CAI:'Каир',ALG:'Алжир',CMN:'Касабланка',TUN:'Тунис',
-      LOS:'Лагос',ACC:'Аккра',JNB:'Йоханнесбург',CPT:'Кейптаун',
-    };
-    const cityName = str => {
-      if (!str || str === '—') return '';
-      if (!str.includes(',') && !str.includes('(') && str.length <= 5) {
-        return AIRPORT_CITIES[str.toUpperCase()] || str;
-      }
-      const m = str.match(/^([^,(]+)/);
-      return m ? m[1].trim() : '';
-    };
-
-    const fmtMins = m => m >= 60 ? `${Math.floor(m/60)}ч ${m%60}м` : `${m}м`;
-    const etaStr = f.eta ? fmtMins(f.eta) : (isAir ? '...' : '--');
-    const durStr = f.duration ? `${Math.floor(f.duration/60)}ч ${f.duration%60}м` : '--';
-    const progress = f.eta ? Math.max(10, Math.min(88, 100 - (f.eta / 2))) : (isAir ? 10 : 0);
-
-    /* Badge */
-    const statusBadge = isAir
-      ? `<span class="badge badge-air">В полёте</span>`
-      : isOff
-        ? `<span class="badge badge-off">Офлайн</span>`
-        : `<span class="badge badge-gnd">На земле</span>`;
-    const extraBadges = [
-      f.delay > 0 ? `<span class="badge badge-del">ЗАДЕРЖКА +${f.delay}м</span>` : '',
-      f.position_type === 'estimated' ? `<span class="badge badge-est">РАСЧ.</span>` : '',
-      f.position_type === 'last_known' ? `<span class="badge badge-lst">ПОСЛЕД.</span>` : '',
-    ].filter(Boolean).join('');
-
-    /* Route — fallback to next upcoming flight when offline */
-    const _nextUp = (!f.origin_iata || f.origin_iata === '—') && f.schedule && f.schedule.upcoming && f.schedule.upcoming[0];
-    const originIata = f.origin_iata && f.origin_iata !== '—' ? f.origin_iata : (_nextUp ? (_nextUp.airPortTOCode || '—') : '—');
-    const destIata   = f.dest_iata   && f.dest_iata   !== '—' ? f.dest_iata   : (_nextUp ? (_nextUp.airPortLACode || '—') : '—');
-    const originCity = f.origin && f.origin !== '—' ? (f.origin).replace(/\s*\(.*\)/, '').trim()
-                     : (_nextUp ? cityName(_nextUp.origin_full || _nextUp.airPortTOCode) : '—');
-    const destCity   = f.destination && f.destination !== '—' ? (f.destination).replace(/\s*\(.*\)/, '').trim()
-                     : (_nextUp ? cityName(_nextUp.dest_full || _nextUp.airPortLACode) : '—');
-
-    /* Weather */
-    const wxOrigin = renderWx(originIata, f.origin_metar, f.origin_temp,
-      `showMetar('${originIata}',null,event)`);
-    const wxDest   = renderWx(destIata,   f.dest_metar,   f.dest_temp,
-      `showMetar('${destIata}',null,event)`);
-
-    /* Progress section */
-    const progressHtml = isAir ? `
-      <div class="progress-section">
-        <div class="progress-meta">
-          <span style="color:var(--muted)">В воздухе: ${durStr}</span>
-          <span>ETA: ${etaStr}</span>
-        </div>
-        <div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div>
-      </div>` : '';
-
-    /* Pre-departure countdown */
-    const depBlock = (() => {
-      if (isAir || !f.next_dep_ts) return '';
-      const diff     = f.next_dep_ts * 1000 - Date.now();
-      const minsLeft = diff / 60000;
-      if (minsLeft > 120) return '';
-      let cls = 'dep-panel', label = 'СЛЕДУЮЩИЙ ВЫЛЕТ', color = 'var(--yellow)';
-      if (minsLeft < 0 && minsLeft > -10)  { cls += ' departed'; label = 'ВЫЛЕЛ — ЖДЁМ FR24'; color = 'var(--green)'; }
-      else if (minsLeft <= 5)              { cls += ' urgent';   label = 'ВЫЛЕТ!';            color = 'var(--red)';   }
-      else if (minsLeft <= 30)             { label = 'СКОРО ВЫЛЕТ'; }
-      const abs  = Math.abs(diff);
-      const totalSec = Math.floor(abs / 1000);
-      const hh   = String(Math.floor(totalSec / 3600)).padStart(2,'0');
-      const mm   = String(Math.floor((totalSec % 3600) / 60)).padStart(2,'0');
-      const ss   = String(totalSec % 60).padStart(2,'0');
-      const sign = diff < 0 ? '+' : '';
-      const timerFmt = totalSec >= 3600 ? `${sign}${hh}:${mm}:${ss}` : `${sign}${mm}:${ss}`;
-      return `<div class="${cls}" id="dep-${f.registration}" data-ts="${f.next_dep_ts}" style="margin-bottom:14px">
-        <div><div class="dep-label" style="color:${color}">${label}</div>
-             <div class="dep-flight">${f.next_dep_flight || ''}</div></div>
-        <div class="dep-timer" style="color:${color}">${timerFmt}</div>
-      </div>`;
-    })();
-
-    /* Schedule table */
-    let schRows = '';
-    if (f.schedule && f.schedule.current) {
-      const c = f.schedule.current;
-      const origCity = cityName(c.origin_full);
-      const destCity = cityName(c.dest_full);
-      schRows += `<tr class="sch-current">
-        <td style="font-weight:700">${c.flight || ''}</td>
-        <td>
-          <span class="sch-iata">${c.airPortTOCode}</span>
-          <span class="sch-city">${origCity}</span>
-        </td>
-        <td style="color:var(--muted);font-size:10px;padding:0 4px">→</td>
-        <td>
-          <span class="sch-iata">${c.airPortLACode}</span>
-          <span class="sch-city">${destCity}</span>
-        </td>
-        <td style="text-align:right;color:var(--accent);font-size:10px">ТЕКУЩИЙ</td>
-      </tr>`;
-    }
-    if (f.schedule && f.schedule.upcoming) {
-      schRows += f.schedule.upcoming.slice(0,5).map(s => {
-        const dt   = new Date(s.dateTakeoff);
-        const date = dt.toLocaleDateString('ru-RU', {day:'2-digit',month:'short',timeZone:'UTC'});
-        const time = dt.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit',timeZone:'UTC',hour12:false});
-        const oc   = cityName(s.origin_full);
-        const dc   = cityName(s.dest_full);
-        return `<tr>
-          <td>${s.flight || ''}</td>
-          <td>
-            <span class="sch-iata">${s.airPortTOCode}</span>
-            <span class="sch-city">${oc}</span>
-          </td>
-          <td style="color:var(--muted);font-size:10px;padding:0 4px">→</td>
-          <td>
-            <span class="sch-iata">${s.airPortLACode}</span>
-            <span class="sch-city">${dc}</span>
-          </td>
-          <td style="text-align:right;font-family:'Roboto Mono',monospace;font-size:10px;white-space:nowrap">
-            <span style="color:var(--muted)">${date}</span> ${time}
-          </td>
-        </tr>`;
-      }).join('');
-    }
-
-    /* Crew flight num & date for API */
-    const crewFlight = f.callsign || (f.schedule && f.schedule.current && f.schedule.current.flight) || '';
-    const crewDate   = f.schedule && f.schedule.current ? f.schedule.current.dateTakeoff : '';
-
-    return `
-    <div class="ac-card">
-      <div class="ac-header">
-        <div class="ac-dot" style="background:${f.display.color}"></div>
-        <span class="ac-reg" style="color:${f.display.color}">${f.display.name}</span>
-        <span class="ac-callsign">${f.callsign || ''}</span>
-        <div class="ac-badges">${extraBadges}${statusBadge}</div>
-      </div>
-
-      <div class="route-row">
-        <div class="route-node">
-          <div class="node-iata">${originIata}</div>
-          <div class="node-city">${originCity}</div>
-          <div class="node-label">Вылет</div>
-        </div>
-        <div class="route-mid">
-          <div class="route-line"></div>
-        </div>
-        <div class="route-node" style="text-align:right">
-          <div class="node-iata">${destIata}</div>
-          <div class="node-city">${destCity}</div>
-          <div class="node-label">Прибытие</div>
-        </div>
-      </div>
-
-      <div class="weather-row">${wxOrigin}${wxDest}</div>
-
-      ${progressHtml}
-      ${depBlock}
-
-      ${schRows ? `<div class="schedule-wrap">
-        <table class="sch-table">
-          <thead><tr>
-            <th>РЕЙС</th>
-            <th>ВЫЛЕТ</th>
-            <th style="padding:0"></th>
-            <th>ПРИЛЁТ</th>
-            <th style="text-align:right">ВРЕМЯ (UTC)</th>
-          </tr></thead>
-          <tbody>${schRows}</tbody>
-        </table>
-      </div>` : ''}
-
-      <div class="card-actions">
-        <button class="action-btn btn-crew" onclick="showCrew('${crewFlight}','${crewDate}','${f.registration}',event)">
-          👥 Экипаж
-        </button>
-        <button class="action-btn btn-history" onclick="showHistory('${f.registration}',event)">
-          📋 История
-        </button>
-        <button class="action-btn btn-metar" onclick="showMetar('${originIata}','${destIata}',event)">
-          ⛅ METAR
-        </button>
-        <button class="action-btn btn-notam" onclick="showNotam('${originIata}','${destIata}',event)">
-          ⚠️ NOTAM
-        </button>
-      </div>
-    </div>`;
-  }
-
-  /* ── ALERTS ────────────────────────────────────────────────── */
-  function renderAlerts(alerts) {
-    document.getElementById('alerts-list').innerHTML = alerts.length
-      ? alerts.map(a => `
-          <div class="alert-item">
-            ${a.text}
-            <div class="alert-time">${new Date(a.ts*1000).toLocaleTimeString()}</div>
-          </div>`).join('')
-      : '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Нет уведомлений</div>';
-  }
-
-  /* ── SYSTEM STATUS ─────────────────────────────────────────── */
-  function renderStatus(s) {
-    const avOk = s.aviabit && s.aviabit.reachable;
-    const frOk = s.fr24    && s.fr24.reachable;
-    document.getElementById('sys-status').innerHTML = `
-      <div class="status-pill ${avOk ? 'pill-ok' : 'pill-err'}">
-        <div class="pill-dot ${avOk ? 'dot-ok' : 'dot-err'}"></div>Aviabit
-      </div>
-      <div class="status-pill ${frOk ? 'pill-ok' : 'pill-err'}">
-        <div class="pill-dot ${frOk ? 'dot-ok' : 'dot-err'}"></div>FR24
-      </div>`;
-  }
-
-  /* ── COUNTDOWNS ────────────────────────────────────────────── */
-  function updateCountdowns() {
-    document.querySelectorAll('[id^="dep-"]').forEach(el => {
-      const ts       = parseFloat(el.dataset.ts);
-      const diff     = ts * 1000 - Date.now();
-      const minsLeft = diff / 60000;
-      const abs      = Math.abs(diff);
-      const mm = String(Math.floor(abs / 60000)).padStart(2,'0');
-      const ss = String(Math.floor((abs % 60000) / 1000)).padStart(2,'0');
-      const timer = el.querySelector('.dep-timer');
-      const label = el.querySelector('.dep-label');
-      if (!timer) return;
-      timer.textContent = `${diff < 0 ? '+' : ''}${mm}:${ss}`;
-      if (minsLeft < 0 && minsLeft > -10) {
-        el.className = 'dep-panel departed';
-        timer.style.color = label.style.color = 'var(--green)';
-        label.textContent = 'ВЫЛЕЛ — ЖДЁМ FR24';
-      } else if (minsLeft <= 5) {
-        el.className = 'dep-panel urgent';
-        timer.style.color = label.style.color = 'var(--red)';
-        label.textContent = 'ВЫЛЕТ!';
-      } else if (minsLeft <= 30) {
-        el.className = 'dep-panel';
-        timer.style.color = label.style.color = 'var(--yellow)';
-        label.textContent = 'СКОРО ВЫЛЕТ';
-      } else {
-        el.className = 'dep-panel';
-        timer.style.color = label.style.color = 'var(--yellow)';
-        label.textContent = 'СЛЕДУЮЩИЙ ВЫЛЕТ';
-      }
-    });
-  }
-
-  /* ── FETCH LOOP ────────────────────────────────────────────── */
-  async function fetchData() {
-    try {
-      const [rF, rA, rS] = await Promise.all([
-        fetch('/api/flights'), fetch('/api/alerts'), fetch('/api/status')
-      ]);
-      const [flights, alerts, status] = await Promise.all([rF.json(), rA.json(), rS.json()]);
-      dataCache = flights;
-      render(flights);
-      renderAlerts(alerts);
-      renderStatus(status);
-      document.getElementById('last-update').textContent =
-        'Обновлено: ' + new Date().toLocaleTimeString();
-    } catch(e) { console.error('fetchData:', e); }
-  }
-
-  /* ── MODAL HELPERS ─────────────────────────────────────────── */
-  function openModal(id) { document.getElementById('modal-' + id).classList.add('open'); }
-  function closeModal(id) { document.getElementById('modal-' + id).classList.remove('open'); }
-
-  /* ── CREW MODAL ────────────────────────────────────────────── */
-  async function showCrew(flight, date, reg, evt) {
-    if (evt) evt.stopPropagation();
-    if (!flight || flight === 'N/A') {
-      document.getElementById('crew-title').textContent = 'Экипаж';
-      document.getElementById('crew-body').innerHTML =
-        '<div class="modal-empty">Нет данных о текущем рейсе</div>';
-      openModal('crew'); return;
-    }
-    document.getElementById('crew-title').textContent = `Экипаж рейса ${flight}`;
-    document.getElementById('crew-sub').textContent = reg || '';
-    document.getElementById('crew-body').innerHTML = '<div class="modal-loading"><div class="spin">⟳</div></div>';
-    openModal('crew');
-    try {
-      const params = `flight=${encodeURIComponent(flight)}${date ? '&date=' + encodeURIComponent(date) : ''}`;
-      const data   = await fetch(`/api/crew?${params}`).then(r => r.json());
-      if (data.error && (!data.crew || !data.crew.length)) {
-        document.getElementById('crew-body').innerHTML =
-          `<div class="modal-empty">⚠️ ${data.error}</div>`;
-        return;
-      }
-      if (!data.crew || !data.crew.length) {
-        document.getElementById('crew-body').innerHTML =
-          '<div class="modal-empty">Экипаж не назначен или данные недоступны</div>';
-        return;
-      }
-      const isComment = data.source === 'comment';
-      const rows = data.crew.map((m, idx) => {
-        const fromComment = m.source === 'comment' || isComment;
-        const roleShort = fromComment ? String(m.order || idx+1) : (m.role || m.armChair || m.post || '—');
-        const roleFull  = fromComment ? '' : (m.role_full || m.postName || roleShort);
-        const name      = m.name || m.fio || m.crewName || '—';
-        const pid       = m.personnel_id || m.personnelId || '';
-        return `<tr>
-          <td>
-            <span class="crew-role" style="${fromComment?'background:rgba(100,116,139,0.15);color:var(--muted)':''}">${roleShort}</span>
-            <span style="font-size:10px;color:var(--muted);margin-left:6px">${roleFull}</span>
-          </td>
-          <td style="font-weight:600;font-size:13px">${name}</td>
-          <td style="color:var(--muted);font-size:10px;font-family:'Roboto Mono',monospace">${pid}</td>
-        </tr>`;
-      }).join('');
-      const sourceNote = isComment ? '<div style="font-size:10px;color:var(--muted);margin-bottom:8px;padding:4px 8px;background:rgba(245,158,11,0.08);border-radius:6px;border:1px solid rgba(245,158,11,0.2)">⚠ Экипаж из поля комментариев Авиабит — без должностей</div>' : '';
-
-      document.getElementById('crew-body').innerHTML = sourceNote + `
-        <table class="modal-table">
-          <thead><tr><th>${isComment?'№':'ДОЛЖНОСТЬ'}</th><th>ФИО</th><th>ID</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-    } catch(e) {
-      document.getElementById('crew-body').innerHTML =
-        `<div class="modal-empty">Ошибка загрузки: ${e.message}</div>`;
-    }
-  }
-
-  /* ── HISTORY MODAL ─────────────────────────────────────────── */
-  async function showHistory(reg, evt) {
-    if (evt) evt.stopPropagation();
-    document.getElementById('history-title').textContent = `История полётов: ${reg}`;
-    document.getElementById('history-body').innerHTML = '<div class="modal-loading"><div class="spin">⟳</div></div>';
-    openModal('history');
-    try {
-      const data = await fetch(`/api/history/${encodeURIComponent(reg)}`).then(r => r.json());
-      if (data.error) {
-        document.getElementById('history-body').innerHTML =
-          `<div class="modal-empty">⚠️ ${data.error}</div>`; return;
-      }
-      if (!data.flights || !data.flights.length) {
-        document.getElementById('history-body').innerHTML =
-          '<div class="modal-empty">Рейсы за последние 30 дней не найдены</div>'; return;
-      }
-      const rows = data.flights.map(f => {
-        const dt  = new Date(f.date_takeoff);
-        const dt2 = new Date(f.date_landing);
-        const date = dt.toLocaleDateString('ru-RU', {day:'2-digit',month:'short',year:'2-digit',timeZone:'UTC'});
-        const t0   = dt.toLocaleTimeString('ru-RU',  {hour:'2-digit',minute:'2-digit',timeZone:'UTC',hour12:false});
-        const t1   = dt2.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit',timeZone:'UTC',hour12:false});
-        const dur  = Math.round((dt2 - dt) / 60000);
-        const durStr = dur > 0 ? `${Math.floor(dur/60)}ч ${dur%60}м` : '—';
-        const statusMap = { 0:'Запланирован', 1:'Выполняется', 2:'Выполнен', 3:'Отменён', 4:'Задержан' };
-        const statusCls = { 0:'hist-prog',   1:'hist-prog',  2:'hist-done', 3:'hist-canc', 4:'hist-canc' };
-        const st = f.status ?? 0;
-        return `<tr>
-          <td style="color:var(--muted);font-size:10px">${date}</td>
-          <td style="font-weight:700">${f.flight || '—'}</td>
-          <td><span style="font-family:'Orbitron',sans-serif;font-size:11px">${f.origin}</span>
-              → <span style="font-family:'Orbitron',sans-serif;font-size:11px">${f.dest}</span></td>
-          <td style="color:var(--muted);font-size:10px;font-family:'Roboto Mono',monospace">${t0}–${t1}</td>
-          <td style="color:var(--muted);font-size:10px">${durStr}</td>
-          <td><span class="hist-status ${statusCls[st]||'hist-done'}">${statusMap[st]||'—'}</span></td>
-        </tr>`;
-      }).join('');
-      document.getElementById('history-body').innerHTML = `
-        <table class="modal-table">
-          <thead><tr><th>ДАТА</th><th>РЕЙС</th><th>МАРШРУТ</th><th>ВРЕМЯ (UTC)</th><th>НАЛЁТ</th><th>СТАТУС</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-    } catch(e) {
-      document.getElementById('history-body').innerHTML =
-        `<div class="modal-empty">Ошибка загрузки: ${e.message}</div>`;
-    }
-  }
-
-  /* ── METAR MODAL ───────────────────────────────────────────── */
-  async function showMetar(iata1, iata2, evt) {
-    if (evt) evt.stopPropagation();
-    const airports = [iata1, iata2].filter(a => a && a !== '—' && a !== 'null');
-    if (!airports.length) return;
-    document.getElementById('metar-title').textContent = `METAR: ${airports.join(' / ')}`;
-    document.getElementById('metar-sub').textContent = '';
-    document.getElementById('metar-body').innerHTML = '<div class="modal-loading"><div class="spin">⟳</div></div>';
-    openModal('metar');
-    try {
-      const results = await Promise.all(airports.map(a => fetch(`/api/metar/${a}`).then(r => r.json())));
-      let html = '';
-      airports.forEach((iata, i) => {
-        const m = results[i];
-        if (m.error) { html += `<p style="color:var(--muted);margin-bottom:16px">${iata}: METAR недоступен</p>`; return; }
-        const updated = m.time ? new Date(m.time).toLocaleString('ru-RU') : '—';
-        html += `
-          <h3 style="font-family:'Orbitron',sans-serif;font-size:12px;margin-bottom:10px;color:var(--accent)">${iata}</h3>
-          <div class="metar-raw">${m.raw || '—'}</div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:12px">Обновлено: ${updated}</div>
-          <div class="metar-grid" style="margin-bottom:24px">
-            ${m.temp != null ? `<div class="metar-item"><div class="metar-lbl">Температура</div><div class="metar-val">${Math.round(m.temp)}°C</div></div>` : ''}
-            ${m.dewp != null ? `<div class="metar-item"><div class="metar-lbl">Точка росы</div><div class="metar-val">${Math.round(m.dewp)}°C</div></div>` : ''}
-            ${m.wind_speed != null ? `<div class="metar-item"><div class="metar-lbl">Ветер</div><div class="metar-val">${windDir(m.wind_dir)} ${m.wind_speed} уз${m.wind_gust ? ` (пор. ${m.wind_gust})` : ''}</div></div>` : ''}
-            ${m.visibility ? `<div class="metar-item"><div class="metar-lbl">Видимость</div><div class="metar-val">${m.visibility} км</div></div>` : ''}
-            ${m.category ? `<div class="metar-item"><div class="metar-lbl">Категория</div><div class="metar-val"><span class="wx-cat ${catClass(m.category)}" style="font-size:14px">${m.category}</span></div></div>` : ''}
-            ${m.altimeter ? `<div class="metar-item"><div class="metar-lbl">QNH</div><div class="metar-val">${Math.round(m.altimeter * 33.8639)} гПа</div></div>` : ''}
-            ${m.wx ? `<div class="metar-item"><div class="metar-lbl">Явления</div><div class="metar-val" style="font-size:12px">${m.wx}</div></div>` : ''}
+function timeCell(planned, actual, delay, isActual) {
+  const p = hhmm(planned), a = hhmm(actual);
+  if (!p && !a) return '<div class="tcell">—</div>';
+  if (!a || a === p) return `<div class="tcell"><span class="plan">${p || '—'}</span></div>`;
+  return `<div class="tcell">
+            <span class="plan struck">${p || '—'}</span>
+            <span class="real" title="${isActual ? 'фактическое' : 'расчётное'}">${a}</span>
+            ${delayChip(delay)}
           </div>`;
-      });
-      document.getElementById('metar-body').innerHTML = html;
-    } catch(e) {
-      document.getElementById('metar-body').innerHTML =
-        `<div class="modal-empty">Ошибка: ${e.message}</div>`;
-    }
-  }
+}
 
-  /* ── NOTAM MODAL ───────────────────────────────────────────── */
-  async function showNotam(iata1, iata2, evt) {
-    if (evt) evt.stopPropagation();
-    const airports = [iata1, iata2].filter(a => a && a !== '—' && a !== 'null');
-    if (!airports.length) return;
-    document.getElementById('notam-title').textContent = `NOTAM: ${airports.join(' / ')}`;
-    document.getElementById('notam-body').innerHTML = '<div class="modal-loading"><div class="spin">⟳</div></div>';
-    openModal('notam');
-    try {
-      const results = await Promise.all(airports.map(a => fetch(`/api/notam/${a}`).then(r => r.json())));
-      let html = '';
-      airports.forEach((iata, i) => {
-        const d = results[i];
-        html += `<h3 style="font-family:'Orbitron',sans-serif;font-size:12px;margin-bottom:10px;color:var(--red)">${iata} — ${d.count || 0} NOTAM</h3>`;
-        if (!d.notams || !d.notams.length) {
-          html += '<p style="color:var(--muted);font-size:12px;margin-bottom:16px">Активных NOTAM не найдено</p>';
-        } else {
-          d.notams.forEach(n => {
-            const start = n.start ? new Date(n.start).toLocaleDateString('ru-RU') : '';
-            const end   = n.end   ? new Date(n.end).toLocaleDateString('ru-RU')   : '';
-            html += `<div class="notam-item">
-              <div class="notam-id">${n.id} ${n.type ? '· ' + n.type : ''}</div>
-              <div class="notam-text">${n.text || '—'}</div>
-              ${(start || end) ? `<div class="notam-dates">${start ? 'С ' + start : ''} ${end ? 'по ' + end : ''}</div>` : ''}
-            </div>`;
-          });
-          html += '<div style="margin-bottom:16px"></div>';
-        }
-      });
-      document.getElementById('notam-body').innerHTML = html;
-    } catch(e) {
-      document.getElementById('notam-body').innerHTML =
-        `<div class="modal-empty">Ошибка: ${e.message}</div>`;
-    }
-  }
+const STATE_RU = { completed:'выполнен', airborne:'в воздухе', due:'ожидает вылета', scheduled:'план' };
 
-  /* ── KEYBOARD: ESC closes modals ───────────────────────────── */
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      ['crew','history','metar','notam'].forEach(id => {
-        document.getElementById('modal-' + id).classList.remove('open');
-      });
-    }
+function renderTabs() {
+  document.getElementById('tabs').innerHTML = S.tails.map(t => {
+    const flying = !!t.now_flying;
+    const sub = flying
+      ? `${t.now_flying.origin} → ${t.now_flying.destination}`
+      : `${t.stats.upcoming} рейсов впереди`;
+    return `<button class="tab ${t.tail === S.active ? 'on' : ''} ${t.placeholder ? 'ghost' : ''}"
+                    onclick="pick('${t.tail}')">
+              <b>${t.tail}</b>
+              <i><span class="dot ${flying ? 'air' : 'idle'}"></span>${sub}</i>
+            </button>`;
+  }).join('') || '';
+}
+
+function renderBody() {
+  const t = S.tails.find(x => x.tail === S.active);
+  const box = document.getElementById('body');
+  if (!t) { box.innerHTML = '<div class="empty">Нет данных</div>'; return; }
+  if (!t.legs.length) { box.innerHTML = '<div class="empty">Для этого борта рейсов нет</div>'; return; }
+
+  const st = t.stats;
+  const cards = `
+    <div class="cards">
+      <div class="card"><u>Борт</u><b>${t.tail}</b>
+        <i>${t.type ? 'тип ' + t.type : ''}${t.placeholder ? ' · плановый слот' : ''}</i></div>
+      <div class="card"><u>Рейсов в окне</u><b>${st.total}</b>
+        <i>${st.completed} выполнено · ${st.upcoming} впереди</i></div>
+      <div class="card"><u>Средняя задержка</u>
+        <b>${st.avg_dep_delay == null ? '—' : (st.avg_dep_delay >= 0 ? '+' : '') + st.avg_dep_delay + 'м'}</b>
+        <i>по вылету, выполненные рейсы</i></div>
+      <div class="card"><u>По расписанию</u>
+        <b>${st.on_time_pct == null ? '—' : st.on_time_pct + '%'}</b>
+        <i>вылет в пределах 15 минут</i></div>
+    </div>`;
+
+  const days = [];
+  t.legs.forEach(l => {
+    if (!days.length || days[days.length - 1].key !== l.day) days.push({ key: l.day, legs: [] });
+    days[days.length - 1].legs.push(l);
   });
 
-  /* ── INIT ──────────────────────────────────────────────────── */
-  fetchData();
-  setInterval(fetchData, 10000);
-  setInterval(updateClock, 1000);
-  setInterval(updateCountdowns, 1000);
-  updateClock();
+  const thead = `<thead><tr>
+      <th>Рейс</th><th>Маршрут</th><th>Вылет UTC</th><th>Прилёт UTC</th>
+      <th class="hide-sm">В пути</th><th>Статус</th><th class="hide-sm">Экипаж</th>
+    </tr></thead>`;
+
+  const html = days.map((d, di) => {
+    const rows = d.legs.map(l => {
+      const past = l.state === 'completed';
+      const crew = l.crew.length
+        ? `<button class="crew" onclick="toggleCrew('${l.id}')">${l.crew.length} чел.</button>
+           <div class="crewlist" id="c${l.id}">${l.crew.map(m =>
+             `<div><span>${m.role}</span>${m.name}</div>`).join('')}</div>`
+        : '<span class="crew none">не назначен</span>';
+      return `<tr class="${past ? 'past' : ''}">
+        <td class="fno">${l.flight}</td>
+        <td class="route">
+          <div><b>${l.origin}</b><span class="arrow">→</span><b>${l.destination}</b></div>
+          <i class="hide-sm">${l.origin_name} → ${l.dest_name}</i>
+        </td>
+        <td>${timeCell(l.std, l.etd, l.dep_delay, !!l.atd)}</td>
+        <td>${timeCell(l.sta, l.eta, l.arr_delay, !!l.ata)}</td>
+        <td class="tcell hide-sm">${dur(l.block_actual ?? l.block_planned)}</td>
+        <td><span class="state ${l.state}">${STATE_RU[l.state]}</span></td>
+        <td class="hide-sm">${crew}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="daybar">
+              <h3>${dayLabel(d.key)}</h3>
+              <span>${d.legs.length} ${d.legs.length === 1 ? 'рейс' : 'рейсов'}</span>
+            </div>
+            <div class="tablewrap"><table>
+              ${di === 0 ? thead : ''}
+              <tbody>${rows}</tbody>
+            </table></div>`;
+  }).join('');
+
+  box.innerHTML = cards + html;
+}
+
+function toggleCrew(id) { document.getElementById('c' + id).classList.toggle('open'); }
+function pick(tail) { S.active = tail; renderTabs(); renderBody(); window.scrollTo(0, 0); }
+
+function apply(data) {
+  S.tails = data.tails || [];
+  S.updated = data.updated;
+  document.getElementById('err').innerHTML = data.error
+    ? `<div class="err">Авиабит: ${data.error} — показаны последние загруженные данные.</div>` : '';
+  if (!S.tails.some(t => t.tail === S.active)) S.active = S.tails.length ? S.tails[0].tail : null;
+  renderTabs();
+  renderBody();
+  const when = S.updated ? new Date(S.updated * 1000) : null;
+  document.getElementById('sync').textContent = when
+    ? `Данные Авиабит от ${pad(when.getUTCHours())}:${pad(when.getUTCMinutes())} UTC · `
+      + `окно −${data.window.days_back}/+${data.window.days_ahead} дней · все времена UTC`
+    : '';
+}
+
+async function load(url) {
+  try { apply(await (await fetch(url, { cache: 'no-store' })).json()); }
+  catch (e) {
+    document.getElementById('err').innerHTML =
+      `<div class="err">Сервер недоступен: ${e.message}. Следующая попытка через 2 минуты.</div>`;
+  }
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* First load has to survive a cold start: Render spins the service down after
+   15 minutes idle and the wake-up costs 30-60s, during which the edge answers
+   502/503. Keep retrying and tell the user what is happening. */
+async function boot() {
+  const bar = document.getElementById('bootbar');
+  const msg = document.getElementById('bootmsg');
+  const btn = document.getElementById('bootbtn');
+  const t0 = Date.now();
+  btn.hidden = true;
+
+  for (let attempt = 1; ; attempt++) {
+    const secs = Math.round((Date.now() - t0) / 1000);
+    bar.style.width = Math.min(96, 8 + secs * 1.5) + '%';
+    msg.textContent = secs < 8   ? 'Подключение…'
+                    : secs < 30  ? `Сервер просыпается… ${secs} с`
+                    : secs < 75  ? `Почти готово… ${secs} с`
+                    :              `Ответа нет уже ${secs} с, продолжаю…`;
+
+    try {
+      const r = await fetch('/api/timetable', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      apply(await r.json());
+      bar.style.width = '100%';
+      await sleep(220);
+      document.getElementById('boot').classList.add('gone');
+      return;
+    } catch (e) {
+      if (secs > 180) {
+        msg.textContent = 'Сервер не отвечает.';
+        btn.hidden = false;
+        return;
+      }
+      await sleep(attempt < 4 ? 1500 : 3000);
+    }
+  }
+}
+
+async function refresh() {
+  const b = document.getElementById('refresh');
+  b.disabled = true; b.textContent = 'Обновляю…';
+  await load('/api/refresh');
+  b.disabled = false; b.textContent = 'Обновить';
+}
+
+clock();
+setInterval(clock, 1000);
+boot();
+setInterval(() => load('/api/timetable'), 120000);
+// coming back to the tab after a while should show fresh data, not stale
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && Date.now() / 1000 - S.updated > 120) load('/api/timetable');
+});
 </script>
 </body>
 </html>

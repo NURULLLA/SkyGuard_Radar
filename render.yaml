@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: skyguard-radar
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # One worker keeps a single warm cache, so a page load costs Aviabit nothing
+    # most of the time. The long timeout covers a cold start, where the very
+    # first request fans out into several Aviabit calls.
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: AVIABIT_USERNAME
+        sync: false
+      - key: AVIABIT_PASSWORD
+        sync: false
+      - key: DAYS_BACK
+        value: "2"
+      - key: DAYS_AHEAD
+        value: "21"
+      - key: CACHE_TTL
+        value: "300"

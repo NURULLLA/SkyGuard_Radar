@@ -1,25 +1,21 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-vcl/
 venv/
+.venv/
 .env
 
-# Config (Do not upload passwords!)
+# Credentials — never commit
 config.json
+
+# Runtime
+logs/
+*.db
+*.log
 
 # IDE
 .vscode/
 .idea/
 
-# Flask
-instance/
-.webassets-cache
-
-# Skyguard Data
-*.db
-logs/
-scratch/
-test_aviabit.py
-debug_fr24.py
+# Cowork scratch
+Claude outputs/
