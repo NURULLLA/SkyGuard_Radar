@@ -51,10 +51,39 @@ DAYS_BACK = int(os.environ.get("DAYS_BACK") or _cfg.get("days_back", 1))
 DAYS_AHEAD = int(os.environ.get("DAYS_AHEAD") or _cfg.get("days_ahead", 21))
 CACHE_TTL = int(os.environ.get("CACHE_TTL") or _cfg.get("cache_ttl", 300))
 
-# A real registration looks like UK75058. Anything else in the "pln" field
-# (VFlyAir, UKreserv, UKres2 ...) is a planning placeholder: still shown, but
-# sorted last and labelled, so an empty slot is never read as a live aircraft.
-REGISTRATION = re.compile(r"^[A-Z]{2}\d{4,}$", re.I)
+# The tail list is never configured — it is whatever "pln" values Aviabit
+# returns, so renames and new names are picked up on the next refresh. The only
+# judgement made here is cosmetic: does this value look like a real aircraft
+# registration (UK75058, UK-75057, EK72901) or like a planning placeholder that
+# dispatchers typed by hand (UKreserv, UKres2, VFlyAir)? Placeholders are still
+# shown in full, just dimmed and sorted last, so an empty slot is never read as
+# a live aircraft. A registration is uppercase/digits once spaces and hyphens
+# are stripped, and carries at least three digits; hand-typed slot names have
+# lowercase letters, too few digits, or both.
+_TAIL_SEPARATORS = str.maketrans("", "", " -")
+
+
+def is_registration(tail):
+    core = (tail or "").strip().translate(_TAIL_SEPARATORS)
+    if not core or not re.fullmatch(r"[A-Z0-9]+", core):
+        return False
+    return sum(c.isdigit() for c in core) >= 3
+
+
+def tail_key(tail):
+    """Group key for a tail.
+
+    Dispatchers spell the same aircraft several ways — UK75057, UK-75057,
+    "UK 75057" — and without this each spelling would open its own tab and
+    split one aircraft's day in two. Registrations therefore group on their
+    punctuation-free form and display it; placeholder slot names are left
+    exactly as typed, since two differently-named slots really are different.
+    """
+    raw = (tail or "").strip() or "—"
+    if is_registration(raw):
+        core = raw.translate(_TAIL_SEPARATORS)
+        return core, core
+    return raw, raw
 
 if not USERNAME or not PASSWORD:
     logger.error("AVIABIT_USERNAME / AVIABIT_PASSWORD are not set — "
@@ -159,11 +188,11 @@ def build_timetable(records):
     by_tail = {}
 
     for rec in records:
-        tail = (rec.get("pln") or "—").strip() or "—"
-        entry = by_tail.setdefault(tail, {
-            "tail": tail,
+        key, label = tail_key(rec.get("pln"))
+        entry = by_tail.setdefault(key, {
+            "tail": label,
             "type": rec.get("plnType") or "",
-            "placeholder": not REGISTRATION.match(tail),
+            "placeholder": not is_registration(label),
             "legs": [],
         })
         entry["legs"].append(build_leg(rec, now))
