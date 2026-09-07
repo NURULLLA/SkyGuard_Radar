@@ -14,7 +14,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 from airports import airport_name
 from schedule_service import AviabitSchedule
@@ -281,6 +281,26 @@ def api_health():
         "cached_tails": len(_cache["data"] or []),
         "cache_age": round(time.time() - _cache["ts"]) if _cache["ts"] else None,
     })
+
+
+@app.after_request
+def cache_headers(response):
+    """Keep the page and the data fresh, let the icons be cached.
+
+    Without an explicit header a browser applies its own heuristic caching, and
+    an iOS home-screen app is the worst offender: it will happily keep serving
+    a stale page for days after a deploy, so an update looks like it never
+    happened. The HTML and the API must always be revalidated; the icons never
+    change and can be cached hard.
+    """
+    path = request.path
+    if path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=604800"
+    else:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/manifest.webmanifest")
