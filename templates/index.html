@@ -18,76 +18,41 @@
     --text:#e6edf6; --muted:#8b9bb4; --dim:#5f6f88;
     --accent:#3ea6ff; --ok:#2ecc8f; --warn:#f5a623; --bad:#ff5f57; --air:#a97bff;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --barh:60px;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);
        font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-       -webkit-text-size-adjust:100%;
-       padding-bottom:env(safe-area-inset-bottom)}
-  header{padding-top:env(safe-area-inset-top)}
+       -webkit-text-size-adjust:100%}
 
-  /* Render's free tier sleeps after 15 min — the first open takes up to a
-     minute, so say so instead of showing an empty page. */
-  .boot{position:fixed;inset:0;z-index:100;background:var(--bg);
-        display:flex;align-items:center;justify-content:center;padding:28px;
-        transition:opacity .35s ease}
-  .boot.gone{opacity:0;pointer-events:none}
-  .bootcard{max-width:330px;width:100%;text-align:center}
-  .bootplane{font-size:44px;animation:float 2.6s ease-in-out infinite}
-  @keyframes float{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-9px) rotate(-2deg)}}
-  .boottitle{font-size:17px;font-weight:650;margin:14px 0 6px;letter-spacing:.02em}
-  .bootmsg{font-size:13.5px;color:var(--muted);min-height:20px}
-  .bootbar{height:3px;border-radius:2px;background:var(--panel-2);overflow:hidden;margin:20px 0 16px}
-  .bootbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--accent);
-             transition:width .9s linear}
-  .boothint{font-size:11.5px;color:var(--dim);line-height:1.6}
-  .bootretry{margin-top:18px}
-  a{color:inherit}
-
+  /* ── header: brand, clock, refresh — one compact row ───────────────────── */
   header{position:sticky;top:0;z-index:20;background:rgba(11,16,23,.94);
-         backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-  .bar{max-width:1280px;margin:0 auto;padding:14px 20px;
-       display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-  .brand{font-size:16px;font-weight:650;letter-spacing:.02em;display:flex;gap:9px;align-items:center}
+         backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+         padding-top:env(safe-area-inset-top)}
+  .bar{max-width:1280px;margin:0 auto;padding:10px 18px;
+       display:flex;align-items:center;gap:12px}
+  .brand{font-size:14.5px;font-weight:650;letter-spacing:.02em;
+         display:flex;gap:7px;align-items:center;white-space:nowrap}
   .brand span{color:var(--accent)}
-  .clock{margin-left:auto;font-family:var(--mono);font-size:18px;letter-spacing:.04em}
-  .clock small{color:var(--dim);font-size:11px;margin-left:6px;letter-spacing:.08em}
-  .sync{font-size:12px;color:var(--dim)}
-  .btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
-       border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer}
-  .btn:hover{border-color:var(--accent);color:var(--accent)}
-  .btn[disabled]{opacity:.5;cursor:default}
+  .clock{margin-left:auto;font-family:var(--mono);font-size:15px;letter-spacing:.03em}
+  .clock small{color:var(--dim);font-size:10px;margin-left:5px;letter-spacing:.08em}
+  .icobtn{width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;
+          background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
+          border-radius:9px;cursor:pointer;font-size:15px;line-height:1;padding:0}
+  .icobtn:hover{border-color:var(--accent);color:var(--accent)}
+  .icobtn[disabled]{opacity:.5;cursor:default}
+  .icobtn.spin{animation:spin .9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
 
-  .tabs{max-width:1280px;margin:0 auto;padding:0 20px 12px;display:flex;gap:8px;
-        flex-wrap:wrap;align-items:stretch}
-  .tab{background:var(--panel);border:1px solid var(--line);border-radius:11px;
-       padding:11px 16px;cursor:pointer;min-width:150px;text-align:left;
-       transition:border-color .15s,background .15s}
-  .tab:hover{border-color:#33455f}
-  .tab.on{border-color:var(--accent);background:var(--panel-2)}
-  .tab b{display:block;font-family:var(--mono);font-size:15px;letter-spacing:.02em}
-  .tab i{display:block;font-style:normal;font-size:11.5px;color:var(--muted);margin-top:3px}
-  .tab.ghost b{color:var(--muted)}
-  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;
-       vertical-align:middle}
-  .dot.air{background:var(--air);box-shadow:0 0 0 3px rgba(169,123,255,.18)}
-  .dot.idle{background:var(--dim)}
+  main{max-width:1280px;margin:0 auto;
+       padding:4px 18px calc(var(--barh) + 28px + env(safe-area-inset-bottom))}
 
-  main{max-width:1280px;margin:0 auto;padding:20px}
-
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
-         gap:12px;margin-bottom:22px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-  .card u{display:block;text-decoration:none;font-size:11px;letter-spacing:.09em;
-          text-transform:uppercase;color:var(--dim)}
-  .card b{display:block;font-size:21px;font-weight:600;margin-top:7px;font-family:var(--mono)}
-  .card i{font-style:normal;font-size:12px;color:var(--muted)}
-
-  .daybar{display:flex;align-items:baseline;gap:12px;margin:26px 0 10px;
+  /* ── day sections ─────────────────────────────────────────────────────── */
+  .daybar{display:flex;align-items:baseline;gap:12px;margin:22px 0 8px;
           padding-bottom:8px;border-bottom:1px solid var(--line)}
-  .daybar h3{margin:0;font-size:14px;font-weight:600;letter-spacing:.02em}
+  .daybar h3{margin:0;font-size:14px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+  .lbl-short{display:none}
   .daybar span{font-size:12px;color:var(--dim)}
-  .daybar em{margin-left:auto;font-style:normal;font-size:11px;color:var(--dim)}
 
   .tablewrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{width:100%;border-collapse:collapse;min-width:560px}
@@ -96,6 +61,8 @@
   tbody tr{border-top:1px solid var(--line)}
   tbody tr:hover{background:rgba(62,166,255,.045)}
   td{padding:11px 12px;vertical-align:top}
+  .past td{opacity:.55}
+
   .fno{font-family:var(--mono);font-size:14px;font-weight:600;white-space:nowrap}
   .route{white-space:nowrap}
   .route b{font-family:var(--mono);font-size:13.5px;font-weight:600}
@@ -129,24 +96,62 @@
 
   .empty{padding:50px 20px;text-align:center;color:var(--dim)}
   .err{background:rgba(255,95,87,.1);border:1px solid rgba(255,95,87,.35);
-       border-radius:10px;padding:12px 16px;margin-bottom:18px;color:#ffb3ae;font-size:13px}
-  .past td{opacity:.55}
+       border-radius:10px;padding:11px 14px;margin:14px 0 0;color:#ffb3ae;font-size:12.5px}
+  .sync{font-size:11.5px;color:var(--dim);margin-top:22px}
+
+  /* ── aircraft switcher: pinned to the bottom, thumb-reachable ─────────── */
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;
+          background:rgba(11,16,23,.97);backdrop-filter:blur(12px);
+          border-top:1px solid var(--line);
+          padding:7px 12px calc(7px + env(safe-area-inset-bottom))}
+  .tabbar .inner{max-width:1280px;margin:0 auto;display:flex;gap:6px;justify-content:center}
+  .tab{flex:1 1 0;min-width:0;max-width:230px;
+       background:var(--panel);border:1px solid var(--line);border-radius:10px;
+       padding:7px 8px;cursor:pointer;text-align:center;color:var(--text);
+       transition:border-color .15s,background .15s}
+  .tab:hover{border-color:#33455f}
+  .tab.on{border-color:var(--accent);background:var(--panel-2)}
+  .tab b{display:block;font-family:var(--mono);font-size:12.5px;font-weight:600;
+         letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab i{display:block;font-style:normal;font-size:10px;color:var(--dim);margin-top:1px;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab.ghost b{color:var(--muted);font-weight:500}
+  .tab.on b{color:var(--text)}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:5px;
+       vertical-align:middle;background:var(--air);box-shadow:0 0 0 3px rgba(169,123,255,.18)}
+
+  /* ── cold start ───────────────────────────────────────────────────────── */
+  .boot{position:fixed;inset:0;z-index:100;background:var(--bg);
+        display:flex;align-items:center;justify-content:center;padding:28px;
+        transition:opacity .35s ease}
+  .boot.gone{opacity:0;pointer-events:none}
+  .bootcard{max-width:330px;width:100%;text-align:center}
+  .bootplane{font-size:44px;animation:float 2.6s ease-in-out infinite}
+  @keyframes float{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-9px) rotate(-2deg)}}
+  .boottitle{font-size:17px;font-weight:650;margin:14px 0 6px;letter-spacing:.02em}
+  .bootmsg{font-size:13.5px;color:var(--muted);min-height:20px}
+  .bootbar{height:3px;border-radius:2px;background:var(--panel-2);overflow:hidden;margin:20px 0 16px}
+  .bootbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--accent);
+             transition:width .9s linear}
+  .boothint{font-size:11.5px;color:var(--dim);line-height:1.6}
+  .btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+       border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;margin-top:18px}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
 
   @media(max-width:720px){
     .hide-sm{display:none !important}
     thead{display:none}          /* columns read fine without labels on a phone */
     table{min-width:0}
-    td,thead th{padding:9px 7px}
+    td{padding:9px 7px}
     .fno,.route b,.tcell{font-size:12.5px}
     .state{font-size:10px}
-    .cards{grid-template-columns:1fr 1fr;gap:9px}
-    .card{padding:11px 12px}
-    .card b{font-size:18px}
-    .bar{padding:12px 14px}
-    main,.tabs{padding-left:14px;padding-right:14px}
-    .tab{min-width:0;flex:1 1 46%;padding:9px 12px}
-    .clock{font-size:16px}
-    .btn{padding:9px 14px}              /* comfortable tap target */
+    .bar{padding:9px 14px}
+    main{padding-left:14px;padding-right:14px}
+    .brand{font-size:13.5px}
+    .tab{max-width:none}
+    .lbl-full{display:none}
+    .lbl-short{display:inline}
+    .daybar{margin-top:20px;gap:9px}
   }
 </style>
 </head>
@@ -160,7 +165,7 @@
     <div class="bootbar"><i id="bootbar"></i></div>
     <div class="boothint">Сервер засыпает после 15 минут простоя.<br>
       Первый запуск занимает до минуты.</div>
-    <div class="bootretry"><button class="btn" id="bootbtn" hidden onclick="boot()">Попробовать снова</button></div>
+    <button class="btn" id="bootbtn" hidden onclick="boot()">Попробовать снова</button>
   </div>
 </div>
 
@@ -168,16 +173,17 @@
   <div class="bar">
     <div class="brand">✈️ Skyguard <span>Radar</span></div>
     <div class="clock" id="clock">--:--:--<small>UTC</small></div>
-    <button class="btn" id="refresh" onclick="refresh()">Обновить</button>
+    <button class="icobtn" id="refresh" onclick="refresh()" title="Обновить" aria-label="Обновить">⟳</button>
   </div>
-  <div class="tabs" id="tabs"></div>
 </header>
 
 <main>
   <div id="err"></div>
   <div id="body"><div class="empty">Загрузка расписания…</div></div>
-  <div class="sync" id="sync" style="margin-top:24px"></div>
+  <div class="sync" id="sync"></div>
 </main>
+
+<nav class="tabbar"><div class="inner" id="tabs"></div></nav>
 
 <script>
 const S = { tails: [], active: null, updated: 0 };
@@ -186,6 +192,7 @@ const pad = n => String(n).padStart(2, '0');
 const hhmm = iso => { if (!iso) return null; const d = new Date(iso);
                       return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); };
 const dur = m => m == null ? '—' : `${Math.floor(m / 60)}ч ${pad(m % 60)}м`;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function clock() {
   const d = new Date();
@@ -193,18 +200,35 @@ function clock() {
     `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}<small>UTC</small>`;
 }
 
+/* 1 рейс / 2 рейса / 5 рейсов */
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} ${one}`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} ${few}`;
+  return `${n} ${many}`;
+}
+const flightsWord = n => plural(n, 'рейс', 'рейса', 'рейсов');
+
+const DOW       = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+const DOW_SHORT = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+const MONTH     = ['января','февраля','марта','апреля','мая','июня',
+                   'июля','августа','сентября','октября','ноября','декабря'];
+const MONTH_SHORT = ['янв','фев','мар','апр','мая','июн',
+                     'июл','авг','сен','окт','ноя','дек'];
+
 function dayLabel(key) {
-  if (key === '—') return 'Без даты';
+  if (key === '—') return { full: 'Без даты', short: 'Без даты' };
   const d = new Date(key + 'T00:00:00Z');
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-  const names = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
-  const months = ['января','февраля','марта','апреля','мая','июня',
-                  'июля','августа','сентября','октября','ноября','декабря'];
-  let label = `${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
-  if (key === today) label += ' — сегодня';
-  else if (key === tomorrow) label += ' — завтра';
-  return `${label} · ${names[d.getUTCDay()]}`;
+  const day = ms => new Date(Date.now() + ms).toISOString().slice(0, 10);
+  let rel = '';
+  if (key === day(0))            rel = ' — сегодня';
+  else if (key === day(864e5))   rel = ' — завтра';
+  else if (key === day(-864e5))  rel = ' — вчера';
+  const n = d.getUTCDate();
+  return {
+    full:  `${n} ${MONTH[d.getUTCMonth()]}${rel} · ${DOW[d.getUTCDay()]}`,
+    short: `${n} ${MONTH_SHORT[d.getUTCMonth()]}${rel} · ${DOW_SHORT[d.getUTCDay()]}`,
+  };
 }
 
 function delayChip(mins) {
@@ -231,15 +255,12 @@ const STATE_RU = { completed:'выполнен', airborne:'в воздухе', d
 function renderTabs() {
   document.getElementById('tabs').innerHTML = S.tails.map(t => {
     const flying = !!t.now_flying;
-    const sub = flying
-      ? `${t.now_flying.origin} → ${t.now_flying.destination}`
-      : `${t.stats.upcoming} рейсов впереди`;
     return `<button class="tab ${t.tail === S.active ? 'on' : ''} ${t.placeholder ? 'ghost' : ''}"
                     onclick="pick('${t.tail}')">
-              <b>${t.tail}</b>
-              <i><span class="dot ${flying ? 'air' : 'idle'}"></span>${sub}</i>
+              <b>${flying ? '<span class="dot"></span>' : ''}${t.tail}</b>
+              <i>${flightsWord(t.stats.upcoming)}</i>
             </button>`;
-  }).join('') || '';
+  }).join('');
 }
 
 function renderBody() {
@@ -247,21 +268,6 @@ function renderBody() {
   const box = document.getElementById('body');
   if (!t) { box.innerHTML = '<div class="empty">Нет данных</div>'; return; }
   if (!t.legs.length) { box.innerHTML = '<div class="empty">Для этого борта рейсов нет</div>'; return; }
-
-  const st = t.stats;
-  const cards = `
-    <div class="cards">
-      <div class="card"><u>Борт</u><b>${t.tail}</b>
-        <i>${t.type ? 'тип ' + t.type : ''}${t.placeholder ? ' · плановый слот' : ''}</i></div>
-      <div class="card"><u>Рейсов в окне</u><b>${st.total}</b>
-        <i>${st.completed} выполнено · ${st.upcoming} впереди</i></div>
-      <div class="card"><u>Средняя задержка</u>
-        <b>${st.avg_dep_delay == null ? '—' : (st.avg_dep_delay >= 0 ? '+' : '') + st.avg_dep_delay + 'м'}</b>
-        <i>по вылету, выполненные рейсы</i></div>
-      <div class="card"><u>По расписанию</u>
-        <b>${st.on_time_pct == null ? '—' : st.on_time_pct + '%'}</b>
-        <i>вылет в пределах 15 минут</i></div>
-    </div>`;
 
   const days = [];
   t.legs.forEach(l => {
@@ -274,15 +280,14 @@ function renderBody() {
       <th class="hide-sm">В пути</th><th>Статус</th><th class="hide-sm">Экипаж</th>
     </tr></thead>`;
 
-  const html = days.map((d, di) => {
+  box.innerHTML = days.map((d, di) => {
     const rows = d.legs.map(l => {
-      const past = l.state === 'completed';
       const crew = l.crew.length
         ? `<button class="crew" onclick="toggleCrew('${l.id}')">${l.crew.length} чел.</button>
            <div class="crewlist" id="c${l.id}">${l.crew.map(m =>
              `<div><span>${m.role}</span>${m.name}</div>`).join('')}</div>`
         : '<span class="crew none">не назначен</span>';
-      return `<tr class="${past ? 'past' : ''}">
+      return `<tr class="${l.state === 'completed' ? 'past' : ''}">
         <td class="fno">${l.flight}</td>
         <td class="route">
           <div><b>${l.origin}</b><span class="arrow">→</span><b>${l.destination}</b></div>
@@ -296,17 +301,16 @@ function renderBody() {
       </tr>`;
     }).join('');
 
+    const lbl = dayLabel(d.key);
     return `<div class="daybar">
-              <h3>${dayLabel(d.key)}</h3>
-              <span>${d.legs.length} ${d.legs.length === 1 ? 'рейс' : 'рейсов'}</span>
+              <h3><span class="lbl-full">${lbl.full}</span><span class="lbl-short">${lbl.short}</span></h3>
+              <span>${flightsWord(d.legs.length)}</span>
             </div>
             <div class="tablewrap"><table>
               ${di === 0 ? thead : ''}
               <tbody>${rows}</tbody>
             </table></div>`;
   }).join('');
-
-  box.innerHTML = cards + html;
 }
 
 function toggleCrew(id) { document.getElementById('c' + id).classList.toggle('open'); }
@@ -335,8 +339,6 @@ async function load(url) {
   }
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 /* First load has to survive a cold start: Render spins the service down after
    15 minutes idle and the wake-up costs 30-60s, during which the edge answers
    502/503. Keep retrying and tell the user what is happening. */
@@ -354,7 +356,6 @@ async function boot() {
                     : secs < 30  ? `Сервер просыпается… ${secs} с`
                     : secs < 75  ? `Почти готово… ${secs} с`
                     :              `Ответа нет уже ${secs} с, продолжаю…`;
-
     try {
       const r = await fetch('/api/timetable', { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -364,11 +365,7 @@ async function boot() {
       document.getElementById('boot').classList.add('gone');
       return;
     } catch (e) {
-      if (secs > 180) {
-        msg.textContent = 'Сервер не отвечает.';
-        btn.hidden = false;
-        return;
-      }
+      if (secs > 180) { msg.textContent = 'Сервер не отвечает.'; btn.hidden = false; return; }
       await sleep(attempt < 4 ? 1500 : 3000);
     }
   }
@@ -376,9 +373,9 @@ async function boot() {
 
 async function refresh() {
   const b = document.getElementById('refresh');
-  b.disabled = true; b.textContent = 'Обновляю…';
+  b.disabled = true; b.classList.add('spin');
   await load('/api/refresh');
-  b.disabled = false; b.textContent = 'Обновить';
+  b.disabled = false; b.classList.remove('spin');
 }
 
 clock();

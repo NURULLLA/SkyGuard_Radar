@@ -4,7 +4,7 @@
     "password": "YOUR_PASSWORD",
     "base_url": "https://ab-web.aviastartu.ru"
   },
-  "days_back": 2,
+  "days_back": 1,
   "days_ahead": 21,
   "cache_ttl": 300
 }

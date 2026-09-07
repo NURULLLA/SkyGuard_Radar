@@ -47,7 +47,7 @@ PASSWORD = os.environ.get("AVIABIT_PASSWORD") or _av.get("password", "")
 BASE_URL = os.environ.get("AVIABIT_BASE_URL") or _av.get(
     "base_url", "https://ab-web.aviastartu.ru")
 
-DAYS_BACK = int(os.environ.get("DAYS_BACK") or _cfg.get("days_back", 2))
+DAYS_BACK = int(os.environ.get("DAYS_BACK") or _cfg.get("days_back", 1))
 DAYS_AHEAD = int(os.environ.get("DAYS_AHEAD") or _cfg.get("days_ahead", 21))
 CACHE_TTL = int(os.environ.get("CACHE_TTL") or _cfg.get("cache_ttl", 300))
 

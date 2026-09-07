@@ -16,7 +16,7 @@ services:
       - key: AVIABIT_PASSWORD
         sync: false
       - key: DAYS_BACK
-        value: "2"
+        value: "1"
       - key: DAYS_AHEAD
         value: "21"
       - key: CACHE_TTL

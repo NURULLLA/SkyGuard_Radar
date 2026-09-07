@@ -5,15 +5,14 @@ One tab per tail, one row per leg, planned time against actual time.
 
 ## What it shows
 
-- **A separate timetable for every tail** that appears in the plan — real
-  registrations first, planning placeholders (VFlyAir, UKreserv, …) last and
-  labelled as such. Nothing to configure: a tail that starts flying shows up on
-  its own, and one that stops flying disappears.
+- **A separate timetable for every tail** that appears in the plan, switched
+  from a bar pinned to the bottom of the screen. Real registrations come first,
+  planning placeholders (VFlyAir, UKreserv, …) last and dimmed. Nothing to
+  configure: a tail that starts flying shows up on its own, and one that stops
+  flying disappears.
 - **Planned vs. actual.** Every leg shows the scheduled time struck through, the
   actual (or Aviabit's own estimated) time below it, and a colour-coded delay
   chip: green ≤15 min, amber ≤60 min, red beyond that.
-- **Per-tail punctuality** — flights in the window, average departure delay, and
-  the share of departures inside 15 minutes.
 - **Crew**, read straight off the flight record, so it always matches the date.
 - All times **UTC**.
 
@@ -36,7 +35,7 @@ as environment variables — which is what you want on a hosted deployment.
 
 | Key / env var | Default | Meaning |
 |---|---|---|
-| `days_back` / `DAYS_BACK` | 2 | how far back the timetable reaches |
+| `days_back` / `DAYS_BACK` | 1 | how far back the timetable reaches |
 | `days_ahead` / `DAYS_AHEAD` | 21 | how far ahead the timetable reaches |
 | `cache_ttl` / `CACHE_TTL` | 300 | seconds before Aviabit is queried again |
 
