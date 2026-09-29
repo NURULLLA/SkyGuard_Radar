@@ -14,6 +14,10 @@ One tab per tail, one row per leg, planned time against actual time.
   actual (or Aviabit's own estimated) time below it, and a colour-coded delay
   chip: green ≤15 min, amber ≤60 min, red beyond that.
 - **Crew**, read straight off the flight record, so it always matches the date.
+- **Airport names, not bare codes.** `airports.py` carries hand-checked Russian
+  names for the network this fleet flies, backed by a generated table covering
+  every airport worldwide with scheduled service — so a brand-new destination
+  reads as a city the first time it appears in the plan.
 - All times **UTC**.
 
 Not included by design: live position tracking, METAR/NOTAM, Telegram alerts.
@@ -90,3 +94,7 @@ without the page moving sideways.
 - Aviabit publishes `dateTakeoffReal` / `dateLandingReal` alongside the planned
   times. This app reads them; anything that only reads the planned times will
   report an aircraft airborne while it is still on stand.
+- The airport fallback table in `airports.py` is generated from OurAirports
+  (public domain). To refresh it, rebuild from `airports.csv` at
+  <https://davidmegginson.github.io/ourairports-data/> — keep `NAMES_RU`, which
+  is hand-written and takes priority.
