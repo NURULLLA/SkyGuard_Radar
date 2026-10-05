@@ -34,6 +34,7 @@
   .brand{font-size:14.5px;font-weight:650;letter-spacing:.02em;
          display:flex;gap:7px;align-items:center;white-space:nowrap}
   .brand span{color:var(--accent)}
+  .brand b{font-weight:inherit}
   .clock{margin-left:auto;font-family:var(--mono);font-size:15px;letter-spacing:.03em}
   .clock small{color:var(--dim);font-size:10px;margin-left:5px;letter-spacing:.08em}
   .icobtn{width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;
@@ -43,6 +44,33 @@
   .icobtn[disabled]{opacity:.5;cursor:default}
   .icobtn.spin{animation:spin .9s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ── plan / history switch ─────────────────────────────────────────────── */
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+       padding:2px;gap:2px}
+  .seg button{background:none;border:0;color:var(--muted);font:inherit;font-size:12.5px;
+              font-weight:600;padding:5px 11px;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .seg button.on{background:var(--panel-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+  .seg button:not(.on):hover{color:var(--accent)}
+
+  /* ── history range picker ─────────────────────────────────────────────── */
+  .hbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0 4px}
+  .hbar label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)}
+  .hbar input[type=date]{background:var(--panel);border:1px solid var(--line);color:var(--text);
+       border-radius:8px;padding:5px 8px;font:13px var(--mono);color-scheme:dark}
+  .hbar input[type=date]:focus{outline:none;border-color:var(--accent)}
+  .preset{background:var(--panel);border:1px solid var(--line);color:var(--muted);
+          border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
+  .preset:hover{border-color:var(--accent);color:var(--accent)}
+  .preset.on{border-color:var(--accent);color:var(--text);background:var(--panel-2)}
+  .hbar .sp{flex:1 1 auto}
+  .hbar[hidden]{display:none}
+
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0 2px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+  .stat b{display:block;font-family:var(--mono);font-size:17px;font-weight:600}
+  .stat span{font-size:11px;color:var(--dim);letter-spacing:.03em}
+  .loading{opacity:.45;pointer-events:none;transition:opacity .2s}
 
   main{max-width:1280px;margin:0 auto;
        padding:4px 18px calc(var(--barh) + 28px + env(safe-area-inset-bottom))}
@@ -154,6 +182,17 @@
     .lbl-full{display:none}
     .lbl-short{display:inline}
     .daybar{margin-top:20px;gap:9px}
+    .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .hbar label{flex:1 1 0;min-width:0}
+    .hbar input[type=date]{width:100%;min-width:0}
+    .hbar .sp{flex-basis:100%;height:0}
+    .preset{flex:1 1 0}
+    .seg button{padding:5px 9px}
+  }
+  @media(max-width:430px){
+    .brand .txt{display:none}
+    .clock small{display:none}
+    .hbar label span{display:none}
   }
 </style>
 </head>
@@ -173,13 +212,25 @@
 
 <header>
   <div class="bar">
-    <div class="brand">✈️ Skyguard <span>Radar</span></div>
+    <div class="brand">✈️<b class="txt">Skyguard <span>Radar</span></b></div>
+    <div class="seg" role="tablist">
+      <button id="m-plan" onclick="setMode('plan')">План</button>
+      <button id="m-history" onclick="setMode('history')">История</button>
+    </div>
     <div class="clock" id="clock">--:--:--<small>UTC</small></div>
     <button class="icobtn" id="refresh" onclick="refresh()" title="Обновить" aria-label="Обновить">⟳</button>
   </div>
 </header>
 
 <main>
+  <div class="hbar" id="hbar" hidden>
+    <label><span>с</span><input type="date" id="h-from" onchange="pickRange()"></label>
+    <label><span>по</span><input type="date" id="h-to" onchange="pickRange()"></label>
+    <span class="sp"></span>
+    <button class="preset" data-days="1" onclick="preset(1)">Вчера</button>
+    <button class="preset" data-days="7" onclick="preset(7)">7 дней</button>
+    <button class="preset" data-days="30" onclick="preset(30)">30 дней</button>
+  </div>
   <div id="err"></div>
   <div id="body"><div class="empty">Загрузка расписания…</div></div>
   <div class="sync" id="sync"></div>
@@ -188,7 +239,12 @@
 <nav class="tabbar"><div class="inner" id="tabs"></div></nav>
 
 <script>
-const S = { tails: [], active: null, updated: 0 };
+const S = {
+  mode: location.hash === '#history' ? 'history' : 'plan',
+  tails: [], active: null, updated: 0, error: null, window: null,
+  hist: { tails: [], from: null, to: null, error: null, loaded: false, busy: false, max: 62 },
+};
+const list = () => S.mode === 'history' ? S.hist.tails : S.tails;
 
 const pad = n => String(n).padStart(2, '0');
 const hhmm = iso => { if (!iso) return null; const d = new Date(iso);
@@ -257,22 +313,30 @@ function timeCell(planned, actual, delay, isActual) {
 const shortCity = s => (s || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || s;
 
 const STATE_RU = { completed:'выполнен', airborne:'в воздухе', due:'ожидает вылета', scheduled:'план' };
+// A leg days in the past with no departure on record is not "waiting" any more.
+const stateLabel = l => S.mode === 'history' && l.state === 'due' ? 'нет факта' : STATE_RU[l.state];
+
+const isoDay = d => d.toISOString().slice(0, 10);
+const daysAgo = n => isoDay(new Date(Date.now() - n * 864e5));
 
 function renderTabs() {
-  document.getElementById('tabs').innerHTML = S.tails.map(t => {
-    const flying = !!t.now_flying;
+  const hist = S.mode === 'history';
+  document.getElementById('tabs').innerHTML = list().map(t => {
+    const flying = !hist && !!t.now_flying;
     return `<button class="tab ${t.tail === S.active ? 'on' : ''} ${t.placeholder ? 'ghost' : ''}"
                     onclick="pick('${t.tail}')">
               <b>${flying ? '<span class="dot"></span>' : ''}${t.tail}</b>
-              <i>${flightsWord(t.stats.upcoming)}</i>
+              <i>${flightsWord(hist ? t.stats.total : t.stats.upcoming)}</i>
             </button>`;
   }).join('');
 }
 
 function renderBody() {
-  const t = S.tails.find(x => x.tail === S.active);
+  const hist = S.mode === 'history';
+  const t = list().find(x => x.tail === S.active);
   const box = document.getElementById('body');
-  if (!t) { box.innerHTML = '<div class="empty">Нет данных</div>'; return; }
+  if (hist && !S.hist.loaded) { box.innerHTML = '<div class="empty">Загрузка истории…</div>'; return; }
+  if (!t) { box.innerHTML = `<div class="empty">${hist ? 'За эти даты рейсов нет' : 'Нет данных'}</div>`; return; }
   if (!t.legs.length) { box.innerHTML = '<div class="empty">Для этого борта рейсов нет</div>'; return; }
 
   const days = [];
@@ -280,13 +344,14 @@ function renderBody() {
     if (!days.length || days[days.length - 1].key !== l.day) days.push({ key: l.day, legs: [] });
     days[days.length - 1].legs.push(l);
   });
+  if (hist) days.reverse();      // history reads newest day first
 
   const thead = `<thead><tr>
       <th>Рейс</th><th>Маршрут</th><th>Вылет UTC</th><th>Прилёт UTC</th>
       <th class="hide-sm">В пути</th><th>Статус</th><th class="hide-sm">Экипаж</th>
     </tr></thead>`;
 
-  box.innerHTML = days.map((d, di) => {
+  box.innerHTML = (hist ? statsStrip(t) : '') + days.map((d, di) => {
     const rows = d.legs.map(l => {
       const crew = l.crew.length
         ? `<button class="crew" onclick="toggleCrew('${l.id}')">${l.crew.length} чел.</button>
@@ -303,7 +368,7 @@ function renderBody() {
         <td>${timeCell(l.std, l.etd, l.dep_delay, !!l.atd)}</td>
         <td>${timeCell(l.sta, l.eta, l.arr_delay, !!l.ata)}</td>
         <td class="tcell hide-sm">${dur(l.block_actual ?? l.block_planned)}</td>
-        <td><span class="state ${l.state}">${STATE_RU[l.state]}</span></td>
+        <td><span class="state ${l.state}">${stateLabel(l)}</span></td>
         <td class="hide-sm">${crew}</td>
       </tr>`;
     }).join('');
@@ -320,22 +385,109 @@ function renderBody() {
   }).join('');
 }
 
+function statsStrip(t) {
+  const st = t.stats;
+  const tile = (v, l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
+  return `<div class="stats">
+    ${tile(st.total, 'рейсов в плане')}
+    ${tile(st.completed, 'выполнено')}
+    ${tile(st.block_minutes ? dur(st.block_minutes) : '—', 'налёт')}
+    ${tile(st.on_time_pct == null ? '—' : st.on_time_pct + '%',
+           'вовремя (≤15м)' + (st.avg_dep_delay == null ? '' : ` · ср. ${st.avg_dep_delay >= 0 ? '+' : ''}${st.avg_dep_delay}м`))}
+  </div>`;
+}
+
 function toggleCrew(id) { document.getElementById('c' + id).classList.toggle('open'); }
 function pick(tail) { S.active = tail; renderTabs(); renderBody(); window.scrollTo(0, 0); }
+
+/* Redraw everything for the current mode. The selected tail is kept when
+   switching between plan and history, as long as it exists in both. */
+function render() {
+  const hist = S.mode === 'history';
+  document.getElementById('m-plan').classList.toggle('on', !hist);
+  document.getElementById('m-history').classList.toggle('on', hist);
+  document.getElementById('hbar').hidden = !hist;
+  document.getElementById('body').classList.toggle('loading', hist && S.hist.busy);
+
+  const tails = list();
+  if (!tails.some(t => t.tail === S.active) && tails.length) S.active = tails[0].tail;
+
+  const err = hist ? S.hist.error : S.error;
+  document.getElementById('err').innerHTML = !err ? ''
+    : hist ? `<div class="err">Авиабит: ${err}</div>`
+    : `<div class="err">Авиабит: ${err} — показаны последние загруженные данные.</div>`;
+
+  renderTabs();
+  renderBody();
+
+  if (hist) {
+    document.getElementById('h-from').value = S.hist.from || '';
+    document.getElementById('h-to').value = S.hist.to || '';
+    const span = S.hist.to === daysAgo(0) || S.hist.to === daysAgo(1)
+      ? Math.round((Date.parse(S.hist.to) - Date.parse(S.hist.from)) / 864e5) + 1 : 0;
+    document.querySelectorAll('.preset').forEach(b => b.classList.toggle('on',
+      S.hist.to === daysAgo(+b.dataset.days === 1 ? 1 : 0) && +b.dataset.days === span));
+    document.getElementById('sync').textContent = S.hist.loaded
+      ? `История ${S.hist.from} — ${S.hist.to} · не более ${S.hist.max} дней за раз · все времена UTC` : '';
+  } else {
+    const when = S.updated ? new Date(S.updated * 1000) : null;
+    document.getElementById('sync').textContent = when && S.window
+      ? `Данные Авиабит от ${pad(when.getUTCHours())}:${pad(when.getUTCMinutes())} UTC · `
+        + `окно −${S.window.days_back}/+${S.window.days_ahead} дней · все времена UTC`
+      : '';
+  }
+}
 
 function apply(data) {
   S.tails = data.tails || [];
   S.updated = data.updated;
-  document.getElementById('err').innerHTML = data.error
-    ? `<div class="err">Авиабит: ${data.error} — показаны последние загруженные данные.</div>` : '';
-  if (!S.tails.some(t => t.tail === S.active)) S.active = S.tails.length ? S.tails[0].tail : null;
-  renderTabs();
-  renderBody();
-  const when = S.updated ? new Date(S.updated * 1000) : null;
-  document.getElementById('sync').textContent = when
-    ? `Данные Авиабит от ${pad(when.getUTCHours())}:${pad(when.getUTCMinutes())} UTC · `
-      + `окно −${data.window.days_back}/+${data.window.days_ahead} дней · все времена UTC`
-    : '';
+  S.error = data.error;
+  if (data.window) S.window = data.window;
+  render();
+}
+
+/* ── history ─────────────────────────────────────────────────────────────── */
+function setMode(m) {
+  if (S.mode === m) return;
+  S.mode = m;
+  history.replaceState(null, '', m === 'history' ? '#history' : location.pathname);
+  if (m === 'history' && !S.hist.loaded && !S.hist.busy) loadHistory(daysAgo(6), daysAgo(0));
+  render();
+  window.scrollTo(0, 0);
+}
+
+async function loadHistory(from, to, force) {
+  S.hist.busy = true;
+  S.hist.from = from; S.hist.to = to;
+  render();
+  try {
+    const q = `from=${from}&to=${to}${force ? '&force=1' : ''}`;
+    const r = await fetch('/api/history?' + q, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    // ignore an answer to a range the user has already moved away from
+    if (S.hist.from !== from || S.hist.to !== to) return;
+    Object.assign(S.hist, { tails: d.tails || [], from: d.from, to: d.to,
+                            error: d.error, max: d.max_days, loaded: true });
+  } catch (e) {
+    S.hist.error = `история не загрузилась (${e.message})`;
+    S.hist.loaded = true;
+  } finally {
+    if (S.hist.from === from && S.hist.to === to) S.hist.busy = false;
+    render();
+  }
+}
+
+function preset(n) {
+  // "Вчера" is just yesterday; the others run up to and including today
+  if (n === 1) loadHistory(daysAgo(1), daysAgo(1));
+  else loadHistory(daysAgo(n - 1), daysAgo(0));
+}
+
+function pickRange() {
+  const f = document.getElementById('h-from').value;
+  const t = document.getElementById('h-to').value;
+  if (f && t) loadHistory(f <= t ? f : t, f <= t ? t : f);
 }
 
 async function load(url) {
@@ -381,13 +533,19 @@ async function boot() {
 async function refresh() {
   const b = document.getElementById('refresh');
   b.disabled = true; b.classList.add('spin');
-  await load('/api/refresh');
+  if (S.mode === 'history') await loadHistory(S.hist.from || daysAgo(6), S.hist.to || daysAgo(0), true);
+  else await load('/api/refresh');
   b.disabled = false; b.classList.remove('spin');
 }
 
 clock();
 setInterval(clock, 1000);
-boot();
+['h-from', 'h-to'].forEach(id => document.getElementById(id).max = daysAgo(0));
+render();
+// Opened straight on #history: wait for the server to wake, then load.
+boot().then(() => {
+  if (S.mode === 'history' && !S.hist.loaded && !S.hist.busy) loadHistory(daysAgo(6), daysAgo(0));
+});
 setInterval(() => load('/api/timetable'), 120000);
 // coming back to the tab after a while should show fresh data, not stale
 document.addEventListener('visibilitychange', () => {
