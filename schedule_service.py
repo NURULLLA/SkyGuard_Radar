@@ -5,6 +5,7 @@ No FlightRadar24, no weather, no notifications.
 """
 
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -42,6 +43,9 @@ class AviabitSchedule:
         self.logged_in = False
         self.last_error = None
 
+        # One requests.Session is shared by the timetable and history views,
+        # which can be asked for at the same moment on different threads.
+        self._io = threading.Lock()
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -137,20 +141,23 @@ class AviabitSchedule:
         return data
 
     def fetch_plan(self, days_back=2, days_ahead=21):
-        """Every flight in the window, for every tail, de-duplicated."""
+        """Every flight in the window around now, for every tail."""
         now = datetime.now(timezone.utc)
-        begin = now - timedelta(days=days_back)
-        end = now + timedelta(days=days_ahead)
+        return self.fetch_range(now - timedelta(days=days_back),
+                                now + timedelta(days=days_ahead))
 
+    def fetch_range(self, begin, end):
+        """Every flight between two instants, for every tail, de-duplicated."""
         merged = {}
-        cursor = begin
-        while cursor < end:
-            stop = min(cursor + timedelta(days=SLICE_DAYS), end)
-            for rec in self._plan_slice(cursor, stop):
-                key = rec.get("recordID") or (
-                    rec.get("pln"), rec.get("flight"), rec.get("dateTakeoff"))
-                merged[key] = rec
-            cursor = stop
+        with self._io:
+            cursor = begin
+            while cursor < end:
+                stop = min(cursor + timedelta(days=SLICE_DAYS), end)
+                for rec in self._plan_slice(cursor, stop):
+                    key = rec.get("recordID") or (
+                        rec.get("pln"), rec.get("flight"), rec.get("dateTakeoff"))
+                    merged[key] = rec
+                cursor = stop
 
         logger.info("Aviabit: %d flights between %s and %s",
                     len(merged), begin.date(), end.date())

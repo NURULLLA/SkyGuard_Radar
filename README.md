@@ -18,6 +18,12 @@ One tab per tail, one row per leg, planned time against actual time.
   names for the network this fleet flies, backed by a generated table covering
   every airport worldwide with scheduled service — so a brand-new destination
   reads as a city the first time it appears in the plan.
+- **History.** The «История» switch in the header shows what each tail actually
+  flew over any past range — yesterday, 7 days, 30 days, or two dates you pick
+  (up to 62 days at once). Newest day first, with a summary per tail: flights
+  planned and flown, block hours, on-time share and average departure delay.
+  Past days are fetched from Aviabit on demand, so nothing has to be stored.
+  `/#history` opens straight into it.
 - All times **UTC**.
 
 Not included by design: live position tracking, METAR/NOTAM, Telegram alerts.
@@ -42,6 +48,7 @@ as environment variables — which is what you want on a hosted deployment.
 | `days_back` / `DAYS_BACK` | 1 | how far back the timetable reaches |
 | `days_ahead` / `DAYS_AHEAD` | 21 | how far ahead the timetable reaches |
 | `cache_ttl` / `CACHE_TTL` | 300 | seconds before Aviabit is queried again |
+| `history_max_days` / `HISTORY_MAX_DAYS` | 62 | longest range the history view will fetch at once |
 
 ## Endpoints
 
@@ -50,6 +57,7 @@ as environment variables — which is what you want on a hosted deployment.
 | `/` | the timetable |
 | `/api/timetable` | tails and legs as JSON (served from cache) |
 | `/api/refresh` | force a re-fetch from Aviabit |
+| `/api/history?from=YYYY-MM-DD&to=YYYY-MM-DD` | past flights for a date range (add `&force=1` to skip the 15-min cache) |
 | `/api/health` | login state, last error, cache age |
 
 ## Deploying (Render)

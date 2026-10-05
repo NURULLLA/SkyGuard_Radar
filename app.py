@@ -12,7 +12,7 @@ import re
 import threading
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Flask, jsonify, render_template, request
 
@@ -213,6 +213,7 @@ def build_timetable(records):
             "total": len(legs),
             "completed": len(flown),
             "upcoming": len(upcoming),
+            "block_minutes": sum(l["block_actual"] or 0 for l in flown),
             "avg_dep_delay": int(round(sum(delays) / len(delays))) if delays else None,
             "on_time_pct": (round(100 * sum(1 for d in delays if d <= 15) / len(delays))
                             if delays else None),
@@ -256,6 +257,53 @@ def get_timetable(force=False):
         return _cache["data"], None, _cache["ts"]
 
 
+# ── history ──────────────────────────────────────────────────────────────────
+# Past days are fetched on demand for whatever range is asked for. Flown legs
+# barely change once they have landed, so a range is kept for HISTORY_TTL and a
+# handful of recent ranges are held, enough for flicking between presets.
+HISTORY_MAX_DAYS = int(os.environ.get("HISTORY_MAX_DAYS") or _cfg.get("history_max_days", 62))
+HISTORY_TTL = 900
+_history = {}
+_history_lock = threading.Lock()
+
+
+def _parse_day(value):
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_history(first, last, force=False):
+    key = (first.isoformat(), last.isoformat())
+    with _history_lock:
+        hit = _history.get(key)
+        if hit and not force and time.time() - hit["ts"] < HISTORY_TTL:
+            return hit["tails"], hit["error"]
+
+    begin = datetime(first.year, first.month, first.day, tzinfo=timezone.utc)
+    end = datetime(last.year, last.month, last.day, tzinfo=timezone.utc) + timedelta(days=1)
+    try:
+        records = aviabit.fetch_range(begin, end)
+    except Exception as exc:
+        logger.error("history fetch crashed: %s", exc, exc_info=True)
+        records = []
+
+    # Aviabit answers by overlap, so a flight that took off the evening before
+    # the range can come back too. Keep only legs scheduled inside the range.
+    lo, hi = first.isoformat(), last.isoformat()
+    records = [r for r in records
+               if lo <= (r.get("dateTakeoff") or "")[:10] <= hi]
+
+    error = None if records else (aviabit.last_error or "за эти даты рейсов нет")
+    tails = build_timetable(records)
+    with _history_lock:
+        if len(_history) >= 12:
+            _history.pop(min(_history, key=lambda k: _history[k]["ts"]))
+        _history[key] = {"tails": tails, "error": error, "ts": time.time()}
+    return tails, error
+
+
 # ── api ──────────────────────────────────────────────────────────────────────
 @app.route("/api/timetable")
 def api_timetable():
@@ -273,6 +321,29 @@ def api_timetable():
 def api_refresh():
     tails, error, ts = get_timetable(force=True)
     return jsonify({"tails": tails, "error": error, "updated": ts})
+
+
+@app.route("/api/history")
+def api_history():
+    """Flights between ?from=YYYY-MM-DD and ?to=YYYY-MM-DD (UTC, inclusive)."""
+    today = datetime.now(timezone.utc).date()
+    last = _parse_day(request.args.get("to")) or today
+    first = _parse_day(request.args.get("from")) or (last - timedelta(days=6))
+    last = min(last, today)
+    if first > last:
+        first, last = last, first
+    if (last - first).days + 1 > HISTORY_MAX_DAYS:
+        first = last - timedelta(days=HISTORY_MAX_DAYS - 1)
+
+    tails, error = get_history(first, last, force=bool(request.args.get("force")))
+    return jsonify({
+        "tails": tails,
+        "error": error,
+        "from": first.isoformat(),
+        "to": last.isoformat(),
+        "max_days": HISTORY_MAX_DAYS,
+        "server_time": datetime.now(timezone.utc).isoformat(),
+    })
 
 
 @app.route("/api/health")
