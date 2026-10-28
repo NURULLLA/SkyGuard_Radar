@@ -346,6 +346,20 @@ def api_history():
     })
 
 
+@app.route("/api/raw")
+def api_raw():
+    """TEMPORARY — one untouched flight record straight from Aviabit, so we
+    can see the real field names for crew comments / cargo info before
+    wiring them into the timetable. Safe to delete once that's done."""
+    try:
+        records = aviabit.fetch_plan(days_back=1, days_ahead=3)
+    except Exception as exc:
+        return jsonify({"error": str(exc)})
+    if not records:
+        return jsonify({"error": aviabit.last_error or "no flights"})
+    return jsonify(records[:2])
+
+
 @app.route("/api/health")
 def api_health():
     return jsonify({
