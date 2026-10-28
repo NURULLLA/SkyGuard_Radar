@@ -380,33 +380,38 @@ def api_raw2():
     if not aviabit.logged_in and not aviabit.login():
         return jsonify({"error": "not logged in", "detail": aviabit.last_error})
 
-    candidates = [
-        f"/api/plan-flight/{rid}",
-        f"/api/plan-flight-card/{rid}",
-        f"/api/plan-flight/card/{rid}",
-        f"/api/flight-card/{rid}",
-        f"/api/flight-card?id={rid}",
-        f"/api/flight-card?recordId={rid}",
-        f"/api/plan-flight?id={rid}",
-        f"/api/plan-flight-comment/{rid}",
-        f"/api/plan-flight-comment?recordId={rid}",
-        f"/api/plan-flight-crew/{rid}",
-        f"/api/crew-info/{rid}",
-        f"/api/remark/{rid}",
-        f"/api/remark-code/{rid}",
-        f"/api/pf-record/{pfid}" if pfid else None,
-        f"/api/plan-flight/{pfid}" if pfid else None,
-    ]
     out = {"rid": rid, "pfid": pfid, "results": {}}
-    for path in candidates:
+
+    get_candidates = [
+        f"/api/flight-card?recordID={rid}",
+        f"/api/flight-card?planFlightId={rid}",
+        f"/api/flight-card?pfRecordId={pfid}" if pfid else None,
+        f"/api/flight-card?flightId={rid}",
+        f"/api/flight-card?id={rid}&recordID={rid}",
+    ]
+    for path in get_candidates:
         if not path:
             continue
         try:
             r = aviabit.session.get(f"{aviabit.base_url}{path}", timeout=10, verify=False)
-            body = r.text[:800]
-            out["results"][path] = {"status": r.status_code, "body": body}
+            out["results"][f"GET {path}"] = {"status": r.status_code, "body": r.text[:800]}
         except Exception as exc:
-            out["results"][path] = {"error": str(exc)}
+            out["results"][f"GET {path}"] = {"error": str(exc)}
+
+    post_bodies = [
+        {"id": rid}, {"recordId": rid}, {"recordID": rid},
+        {"planFlightId": rid}, {"pfRecordId": pfid},
+    ]
+    for body in post_bodies:
+        if any(v is None for v in body.values()):
+            continue
+        try:
+            r = aviabit.session.post(f"{aviabit.base_url}/api/flight-card", json=body,
+                                     timeout=10, verify=False)
+            out["results"][f"POST {body}"] = {"status": r.status_code, "body": r.text[:800]}
+        except Exception as exc:
+            out["results"][f"POST {body}"] = {"error": str(exc)}
+
     return jsonify(out)
 
 
