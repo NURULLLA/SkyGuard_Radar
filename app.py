@@ -360,6 +360,56 @@ def api_raw():
     return jsonify(records[:2])
 
 
+@app.route("/api/raw2")
+def api_raw2():
+    """TEMPORARY — probes a handful of likely Aviabit endpoints for the
+    comment / crew / cargo detail behind one flight record, using the
+    app's own logged-in session. Safe to delete once we know the real path."""
+    tails, error, ts = get_timetable()
+    rid = pfid = None
+    for t in tails:
+        for leg in t["legs"]:
+            if leg["id"]:
+                rid, pfid = leg["id"], leg.get("pf_id")
+                break
+        if rid:
+            break
+    if rid is None:
+        return jsonify({"error": "no flight id available yet"})
+
+    if not aviabit.logged_in and not aviabit.login():
+        return jsonify({"error": "not logged in", "detail": aviabit.last_error})
+
+    candidates = [
+        f"/api/plan-flight/{rid}",
+        f"/api/plan-flight-card/{rid}",
+        f"/api/plan-flight/card/{rid}",
+        f"/api/flight-card/{rid}",
+        f"/api/flight-card?id={rid}",
+        f"/api/flight-card?recordId={rid}",
+        f"/api/plan-flight?id={rid}",
+        f"/api/plan-flight-comment/{rid}",
+        f"/api/plan-flight-comment?recordId={rid}",
+        f"/api/plan-flight-crew/{rid}",
+        f"/api/crew-info/{rid}",
+        f"/api/remark/{rid}",
+        f"/api/remark-code/{rid}",
+        f"/api/pf-record/{pfid}" if pfid else None,
+        f"/api/plan-flight/{pfid}" if pfid else None,
+    ]
+    out = {"rid": rid, "pfid": pfid, "results": {}}
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            r = aviabit.session.get(f"{aviabit.base_url}{path}", timeout=10, verify=False)
+            body = r.text[:800]
+            out["results"][path] = {"status": r.status_code, "body": body}
+        except Exception as exc:
+            out["results"][path] = {"error": str(exc)}
+    return jsonify(out)
+
+
 @app.route("/api/health")
 def api_health():
     return jsonify({
