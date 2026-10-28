@@ -415,44 +415,6 @@ def api_raw2():
     return jsonify(out)
 
 
-@app.route("/api/try-login", methods=["POST"])
-def api_try_login():
-    """TEMPORARY — tests whether a given Aviabit login can see the
-    flight-card detail (comments/crew/cargo). Runs on its own throwaway
-    session; never touches the app's real login, and the credentials are
-    used only for this one request — not logged, not stored, not returned."""
-    body = request.get_json(silent=True) or {}
-    username = body.get("username")
-    password = body.get("password")
-    if not username or not password:
-        return jsonify({"error": "username and password required"}), 400
-
-    probe = AviabitSchedule(username, password, BASE_URL)
-    if not probe.login():
-        return jsonify({"logged_in": False, "error": probe.last_error})
-
-    tails, error, ts = get_timetable()
-    rid = None
-    for t in tails:
-        for leg in t["legs"]:
-            if leg["id"]:
-                rid = leg["id"]
-                break
-        if rid:
-            break
-
-    result = {"logged_in": True}
-    if rid:
-        try:
-            r = probe.session.post(f"{probe.base_url}/api/flight-card",
-                                   json={"recordID": rid}, timeout=10, verify=False)
-            result["flight_card_status"] = r.status_code
-            result["flight_card_body"] = r.text[:2000]
-        except Exception as exc:
-            result["flight_card_error"] = str(exc)
-    return jsonify(result)
-
-
 @app.route("/api/health")
 def api_health():
     return jsonify({
