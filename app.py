@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from flask import Flask, jsonify, render_template, request
 
 from airports import airport_city, airport_name
+from airport_tz import airport_tz
 from schedule_service import AviabitSchedule
 
 # ── logging ──────────────────────────────────────────────────────────────────
@@ -169,6 +170,8 @@ def build_leg(rec, now):
         "dest_name": airport_name(dest),
         "origin_city": airport_city(origin),
         "dest_city": airport_city(dest),
+        "origin_tz": airport_tz(origin),
+        "dest_tz": airport_tz(dest),
         "std": std.isoformat() if std else None,
         "sta": sta.isoformat() if sta else None,
         "etd": etd.isoformat() if etd else None,

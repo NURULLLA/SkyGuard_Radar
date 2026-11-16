@@ -37,6 +37,11 @@
   .brand b{font-weight:inherit}
   .clock{margin-left:auto;font-family:var(--mono);font-size:15px;letter-spacing:.03em}
   .clock small{color:var(--dim);font-size:10px;margin-left:5px;letter-spacing:.08em}
+  .tzbtn{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
+         border-radius:8px;padding:5px 10px;font:inherit;font-family:var(--mono);
+         font-size:11.5px;font-weight:600;letter-spacing:.03em;cursor:pointer;white-space:nowrap}
+  .tzbtn.on{border-color:var(--accent);color:var(--accent)}
+  .tzbtn:hover{border-color:var(--accent)}
   .icobtn{width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;
           background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
           border-radius:9px;cursor:pointer;font-size:15px;line-height:1;padding:0}
@@ -218,6 +223,8 @@
       <button id="m-history" onclick="setMode('history')">История</button>
     </div>
     <div class="clock" id="clock">--:--:--<small>UTC</small></div>
+    <button class="tzbtn" id="tzbtn" onclick="toggleTz()"
+            title="Переключить время рейсов между UTC и местным временем аэропортов">UTC</button>
     <button class="icobtn" id="refresh" onclick="refresh()" title="Обновить" aria-label="Обновить">⟳</button>
   </div>
 </header>
@@ -243,12 +250,39 @@ const S = {
   mode: location.hash === '#history' ? 'history' : 'plan',
   tails: [], active: null, updated: 0, error: null, window: null,
   hist: { tails: [], from: null, to: null, error: null, loaded: false, busy: false, max: 62 },
+  timeMode: localStorage.getItem('sgr_tz') === 'local' ? 'local' : 'utc',
 };
 const list = () => S.mode === 'history' ? S.hist.tails : S.tails;
 
 const pad = n => String(n).padStart(2, '0');
-const hhmm = iso => { if (!iso) return null; const d = new Date(iso);
-                      return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); };
+
+// UTC by default; with a known airport time zone and local mode on, format
+// in that zone instead. Falls back to UTC silently if the zone is missing
+// or the browser rejects it.
+const hhmm = (iso, tz) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (S.timeMode === 'local' && tz) {
+    try {
+      return new Intl.DateTimeFormat('ru-RU',
+        { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).format(d);
+    } catch (e) { /* unknown zone name — fall through to UTC */ }
+  }
+  return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+};
+
+function toggleTz() {
+  S.timeMode = S.timeMode === 'local' ? 'utc' : 'local';
+  localStorage.setItem('sgr_tz', S.timeMode);
+  const b = document.getElementById('tzbtn');
+  b.textContent = S.timeMode === 'local' ? 'МЕСТНОЕ' : 'UTC';
+  b.classList.toggle('on', S.timeMode === 'local');
+  b.title = S.timeMode === 'local'
+    ? 'Время показано по аэропорту вылета/прилёта — нажмите для UTC'
+    : 'Время показано в UTC — нажмите для местного времени аэропортов';
+  renderBody();
+}
+
 const dur = m => m == null ? '—' : `${Math.floor(m / 60)}ч ${pad(m % 60)}м`;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -297,8 +331,8 @@ function delayChip(mins) {
   return `<span class="chip bad">+${mins}м</span>`;
 }
 
-function timeCell(planned, actual, delay, isActual) {
-  const p = hhmm(planned), a = hhmm(actual);
+function timeCell(planned, actual, delay, isActual, tz) {
+  const p = hhmm(planned, tz), a = hhmm(actual, tz);
   if (!p && !a) return '<div class="tcell">—</div>';
   if (!a || a === p) return `<div class="tcell"><span class="plan">${p || '—'}</span></div>`;
   return `<div class="tcell">
@@ -346,8 +380,10 @@ function renderBody() {
   });
   if (hist) days.reverse();      // history reads newest day first
 
+  const tzOn = S.timeMode === 'local';
   const thead = `<thead><tr>
-      <th>Рейс</th><th>Маршрут</th><th>Вылет UTC</th><th>Прилёт UTC</th>
+      <th>Рейс</th><th>Маршрут</th>
+      <th>Вылет ${tzOn ? 'местное' : 'UTC'}</th><th>Прилёт ${tzOn ? 'местное' : 'UTC'}</th>
       <th class="hide-sm">В пути</th><th>Статус</th><th class="hide-sm">Экипаж</th>
     </tr></thead>`;
 
@@ -365,8 +401,8 @@ function renderBody() {
           <i><span class="lbl-full">${l.origin_name} → ${l.dest_name}</span
              ><span class="lbl-short">${shortCity(l.origin_city)} → ${shortCity(l.dest_city)}</span></i>
         </td>
-        <td>${timeCell(l.std, l.etd, l.dep_delay, !!l.atd)}</td>
-        <td>${timeCell(l.sta, l.eta, l.arr_delay, !!l.ata)}</td>
+        <td>${timeCell(l.std, l.etd, l.dep_delay, !!l.atd, l.origin_tz)}</td>
+        <td>${timeCell(l.sta, l.eta, l.arr_delay, !!l.ata, l.dest_tz)}</td>
         <td class="tcell hide-sm">${dur(l.block_actual ?? l.block_planned)}</td>
         <td><span class="state ${l.state}">${stateLabel(l)}</span></td>
         <td class="hide-sm">${crew}</td>
@@ -540,6 +576,11 @@ async function refresh() {
 
 clock();
 setInterval(clock, 1000);
+if (S.timeMode === 'local') {
+  const b = document.getElementById('tzbtn');
+  b.textContent = 'МЕСТНОЕ'; b.classList.add('on');
+  b.title = 'Время показано по аэропорту вылета/прилёта — нажмите для UTC';
+}
 ['h-from', 'h-to'].forEach(id => document.getElementById(id).max = daysAgo(0));
 render();
 // Opened straight on #history: wait for the server to wake, then load.
