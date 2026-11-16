@@ -107,6 +107,7 @@
   .tcell .plan.struck{text-decoration:line-through;text-decoration-color:var(--dim);
                       font-size:12.5px;display:block}
   .tcell .real{display:block;font-weight:600}
+  .tcell .tzoff{color:var(--dim);font-size:10.5px;font-weight:500;margin-left:5px}
   .chip{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;
         padding:2px 6px;border-radius:5px;margin-top:3px}
   .chip.ok{background:rgba(46,204,143,.14);color:var(--ok)}
@@ -271,6 +272,24 @@ const hhmm = (iso, tz) => {
   return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
 };
 
+// "UTC+5" / "UTC-3:30" style offset label for a given moment in a zone —
+// shown next to local times so it's clear how far from UTC they are.
+const tzOffsetCache = {};
+function tzOffsetLabel(iso, tz) {
+  if (!iso || !tz) return '';
+  const key = tz + '|' + iso.slice(0, 10); // offset is stable within a day for our use
+  if (key in tzOffsetCache) return tzOffsetCache[key];
+  let label = '';
+  try {
+    const parts = new Intl.DateTimeFormat('en-US',
+      { timeZone: tz, timeZoneName: 'shortOffset', hour: 'numeric' }).formatToParts(new Date(iso));
+    const raw = (parts.find(p => p.type === 'timeZoneName') || {}).value || '';
+    label = raw.replace('GMT', 'UTC').replace(/^UTC$/, 'UTC+0');
+  } catch (e) { /* unknown zone — no label */ }
+  tzOffsetCache[key] = label;
+  return label;
+}
+
 function toggleTz() {
   S.timeMode = S.timeMode === 'local' ? 'utc' : 'local';
   localStorage.setItem('sgr_tz', S.timeMode);
@@ -333,11 +352,13 @@ function delayChip(mins) {
 
 function timeCell(planned, actual, delay, isActual, tz) {
   const p = hhmm(planned, tz), a = hhmm(actual, tz);
+  const off = S.timeMode === 'local' ? tzOffsetLabel(actual || planned, tz) : '';
+  const offTag = off ? `<small class="tzoff">${off}</small>` : '';
   if (!p && !a) return '<div class="tcell">—</div>';
-  if (!a || a === p) return `<div class="tcell"><span class="plan">${p || '—'}</span></div>`;
+  if (!a || a === p) return `<div class="tcell"><span class="plan">${p || '—'}${offTag}</span></div>`;
   return `<div class="tcell">
             <span class="plan struck">${p || '—'}</span>
-            <span class="real" title="${isActual ? 'фактическое' : 'расчётное'}">${a}</span>
+            <span class="real" title="${isActual ? 'фактическое' : 'расчётное'}">${a}${offTag}</span>
             ${delayChip(delay)}
           </div>`;
 }
