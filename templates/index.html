@@ -14,9 +14,9 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <style>
   :root{
-    --bg:#0b1017; --panel:#131a24; --panel-2:#182231; --line:#243044;
+    --bg:#0a0e16; --panel:#131a24; --panel-2:#182231; --line:#243044;
     --text:#e6edf6; --muted:#8b9bb4; --dim:#5f6f88;
-    --accent:#3ea6ff; --ok:#2ecc8f; --warn:#f5a623; --bad:#ff5f57; --air:#a97bff;
+    --accent:#4fb6ff; --ok:#2ecc8f; --warn:#f5a623; --bad:#ff5f57; --air:#a97bff;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
     --barh:60px;
   }
@@ -30,12 +30,30 @@
          backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
          padding-top:env(safe-area-inset-top)}
   .bar{max-width:1280px;margin:0 auto;padding:10px 18px;
-       display:flex;align-items:center;gap:12px}
-  .brand{font-size:14.5px;font-weight:650;letter-spacing:.02em;
-         display:flex;gap:7px;align-items:center;white-space:nowrap}
-  .brand span{color:var(--accent)}
-  .brand b{font-weight:inherit}
-  .clock{margin-left:auto;font-family:var(--mono);font-size:15px;letter-spacing:.03em}
+       display:flex;flex-wrap:wrap;align-items:center;gap:10px;row-gap:9px}
+  .brand{display:flex;gap:8px;align-items:center;white-space:nowrap}
+  .brand b{font-family:var(--mono);font-size:13.5px;font-weight:700;
+           letter-spacing:.11em;color:var(--text)}
+
+  /* a radar sweep stands in for the brand mark — the one animated flourish
+     on the page, and a literal nod to what "Radar" means rather than a
+     stock icon. Holds still if the viewer prefers reduced motion. */
+  .radarIco{position:relative;width:19px;height:19px;flex:0 0 19px;border-radius:50%;
+            background:radial-gradient(circle at 34% 32%, rgba(79,182,255,.3), rgba(79,182,255,.04) 72%);
+            border:1px solid rgba(79,182,255,.38)}
+  .radarIco::before{content:'';position:absolute;inset:0;border-radius:50%;
+            background:conic-gradient(from 0deg, var(--accent), rgba(79,182,255,0) 38%);
+            -webkit-mask:radial-gradient(circle, transparent 34%, #000 35%);
+                    mask:radial-gradient(circle, transparent 34%, #000 35%);
+            animation:sweep 3.4s linear infinite}
+  .radarIco::after{content:'';position:absolute;left:50%;top:50%;width:3px;height:3px;
+            margin:-1.5px 0 0 -1.5px;border-radius:50%;background:var(--accent);
+            box-shadow:0 0 5px 1px rgba(79,182,255,.75)}
+  @keyframes sweep{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){.radarIco::before{animation:none}}
+
+  .tools{display:flex;align-items:center;gap:10px;margin-left:auto}
+  .clock{font-family:var(--mono);font-size:15px;letter-spacing:.03em}
   .clock small{color:var(--dim);font-size:10px;margin-left:5px;letter-spacing:.08em}
   .tzbtn{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
          border-radius:8px;padding:5px 10px;font:inherit;font-family:var(--mono);
@@ -161,9 +179,10 @@
         transition:opacity .35s ease}
   .boot.gone{opacity:0;pointer-events:none}
   .bootcard{max-width:330px;width:100%;text-align:center}
-  .bootplane{font-size:44px;animation:float 2.6s ease-in-out infinite}
-  @keyframes float{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-9px) rotate(-2deg)}}
-  .boottitle{font-size:17px;font-weight:650;margin:14px 0 6px;letter-spacing:.02em}
+  .bootIco{display:flex;justify-content:center}
+  .radarIco-lg{width:46px;height:46px;flex:0 0 46px}
+  .boottitle{font-family:var(--mono);font-size:16px;font-weight:700;
+             margin:16px 0 6px;letter-spacing:.14em}
   .bootmsg{font-size:13.5px;color:var(--muted);min-height:20px}
   .bootbar{height:3px;border-radius:2px;background:var(--panel-2);overflow:hidden;margin:20px 0 16px}
   .bootbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--accent);
@@ -182,8 +201,9 @@
     .route i{font-size:10.5px;line-height:1.35}
     .state{font-size:10px}
     .bar{padding:9px 14px}
+    .seg{margin-left:auto}
+    .tools{flex-basis:100%;margin-left:0;justify-content:space-between}
     main{padding-left:14px;padding-right:14px}
-    .brand{font-size:13.5px}
     .tab{max-width:none}
     .lbl-full{display:none}
     .lbl-short{display:inline}
@@ -196,7 +216,6 @@
     .seg button{padding:5px 9px}
   }
   @media(max-width:430px){
-    .brand .txt{display:none}
     .clock small{display:none}
     .hbar label span{display:none}
   }
@@ -206,8 +225,8 @@
 
 <div class="boot" id="boot">
   <div class="bootcard">
-    <div class="bootplane">✈️</div>
-    <div class="boottitle">Skyguard Radar</div>
+    <div class="bootIco"><span class="radarIco radarIco-lg" aria-hidden="true"></span></div>
+    <div class="boottitle">SKYGUARD</div>
     <div class="bootmsg" id="bootmsg">Подключение…</div>
     <div class="bootbar"><i id="bootbar"></i></div>
     <div class="boothint">Сервер засыпает после 15 минут простоя.<br>
@@ -218,15 +237,17 @@
 
 <header>
   <div class="bar">
-    <div class="brand">✈️<b class="txt">Skyguard <span>Radar</span></b></div>
+    <div class="brand"><span class="radarIco" aria-hidden="true"></span><b>SKYGUARD</b></div>
     <div class="seg" role="tablist">
       <button id="m-plan" onclick="setMode('plan')">План</button>
       <button id="m-history" onclick="setMode('history')">История</button>
     </div>
-    <div class="clock" id="clock">--:--:--<small>UTC</small></div>
-    <button class="tzbtn" id="tzbtn" onclick="toggleTz()"
-            title="Переключить время рейсов между UTC и местным временем аэропортов">UTC</button>
-    <button class="icobtn" id="refresh" onclick="refresh()" title="Обновить" aria-label="Обновить">⟳</button>
+    <div class="tools">
+      <div class="clock" id="clock">--:--:--<small>UTC</small></div>
+      <button class="tzbtn" id="tzbtn" onclick="toggleTz()"
+              title="Переключить время рейсов между UTC и местным временем аэропортов">UTC</button>
+      <button class="icobtn" id="refresh" onclick="refresh()" title="Обновить" aria-label="Обновить">⟳</button>
+    </div>
   </div>
 </header>
 
